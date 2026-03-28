@@ -792,6 +792,9 @@ tr:last-child td { border-bottom: none; }
     <button class="nav-item" data-view="leaks">
       <span class="nav-icon">&#128269;</span> Leak Finder
     </button>
+    <button class="nav-item" data-view="handlogger">
+      <span class="nav-icon">&#9824;</span> Hand Logger
+    </button>
   </div>
 
   <div class="sidebar-bankroll">
@@ -1094,7 +1097,7 @@ function calcStats(sessions) {
 function switchView(view) {
   currentView = view;
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === view));
-  const titles = { dashboard: 'Dashboard', sessions: 'Log Session', analytics: 'Analytics', live: 'Live Session', goals: 'Goals', leaks: 'Leak Finder' };
+  const titles = { dashboard: 'Dashboard', sessions: 'Log Session', analytics: 'Analytics', live: 'Live Session', goals: 'Goals', leaks: 'Leak Finder', handlogger: 'Hand Logger' };
   document.getElementById('topbar-title').textContent = titles[view] || view;
   const content = document.getElementById('content');
   content.innerHTML = '';
@@ -1105,6 +1108,7 @@ function switchView(view) {
   else if (view === 'live') renderLiveView(content);
   else if (view === 'goals') renderGoalsView(content);
   else if (view === 'leaks') renderLeakFinderView(content);
+  else if (view === 'handlogger') renderHandLoggerView(content);
 }
 
 function toggleLiveNav() { switchView('live'); }
@@ -2820,6 +2824,399 @@ function renderLeakFinderView(container) {
       `}
     </div>
   `;
+}
+
+// ===== HAND LOGGER =====
+const HL_POSITIONS = ['UTG','UTG+1','MP','MP+1','HJ','CO','BTN','SB','BB'];
+const HL_ACTIONS   = ['Fold','Call','Raise','3-Bet','4-Bet+','All-In'];
+const HL_HAND_TYPES = [
+  'AA','KK','QQ','JJ','TT','99','88','77','66','55','44','33','22',
+  'AKs','AQs','AJs','ATs','A9s','A8s','A7s','A6s','A5s','A4s','A3s','A2s',
+  'AKo','KQs','KJs','KTs','K9s','K8s','K7s','K6s','K5s','K4s','K3s','K2s',
+  'AQo','KQo','QJs','QTs','Q9s','Q8s','Q7s','Q6s','Q5s','Q4s','Q3s','Q2s',
+  'AJo','KJo','QJo','JTs','J9s','J8s','J7s','J6s','J5s','J4s','J3s','J2s',
+  'ATo','KTo','QTo','JTo','T9s','T8s','T7s','T6s','T5s','T4s','T3s','T2s',
+  'A9o','K9o','Q9o','J9o','T9o','98s','97s','96s','95s','94s','93s','92s',
+  'A8o','K8o','Q8o','J8o','T8o','98o','87s','86s','85s','84s','83s','82s',
+  'A7o','K7o','Q7o','J7o','T7o','97o','87o','76s','75s','74s','73s','72s',
+  'A6o','K6o','Q6o','J6o','T6o','96o','86o','76o','65s','64s','63s','62s',
+  'A5o','K5o','Q5o','J5o','T5o','95o','85o','75o','65o','54s','53s','52s',
+  'A4o','K4o','Q4o','J4o','T4o','94o','84o','74o','64o','54o','43s','42s',
+  'A3o','K3o','Q3o','J3o','T3o','93o','83o','73o','63o','53o','43o','32s',
+  'A2o','K2o','Q2o','J2o','T2o','92o','82o','72o','62o','52o','42o','32o',
+];
+
+function getHands()       { try { return JSON.parse(localStorage.getItem('pokerHands_v1') || '[]'); } catch { return []; } }
+function saveHands(h)     { localStorage.setItem('pokerHands_v1', JSON.stringify(h)); }
+
+function calcHandStats(hands) {
+  if (!hands.length) return null;
+  const total = hands.length;
+  const wins   = hands.filter(h => h.result === 'Win').length;
+  const losses = hands.filter(h => h.result === 'Loss').length;
+  const totalPnl = hands.reduce((s, h) => s + (h.pnl || 0), 0);
+  const vpip     = hands.filter(h => h.preflopAction && h.preflopAction !== 'Fold').length;
+  const pfr      = hands.filter(h => ['Raise','3-Bet','4-Bet+','All-In'].includes(h.preflopAction)).length;
+  const threeBet = hands.filter(h => h.preflopAction === '3-Bet').length;
+  const flopSeen = hands.filter(h => h.sawFlop).length;
+  const cbet     = hands.filter(h => h.cbet).length;
+  const wtsd     = hands.filter(h => h.wentToShowdown).length;
+  const wonAtSD  = hands.filter(h => h.wentToShowdown && h.result === 'Win').length;
+  return {
+    total, wins, losses, totalPnl,
+    winRate:  ((wins  / total)    * 100).toFixed(1),
+    vpip:     ((vpip  / total)    * 100).toFixed(1),
+    pfr:      ((pfr   / total)    * 100).toFixed(1),
+    threeBet: ((threeBet / total) * 100).toFixed(1),
+    cbet:     flopSeen > 0 ? ((cbet / flopSeen)  * 100).toFixed(1) : '0.0',
+    wtsd:     flopSeen > 0 ? ((wtsd / flopSeen)  * 100).toFixed(1) : '0.0',
+    wonAtSD:  wtsd > 0    ? ((wonAtSD / wtsd)     * 100).toFixed(1) : '0.0',
+    avgPnl:   (totalPnl / total).toFixed(2),
+  };
+}
+
+function hlPnlCurve(hands) {
+  let cum = 0;
+  return [...hands].sort((a, b) => new Date(a.date) - new Date(b.date))
+    .map((h, i) => { cum += h.pnl || 0; return { i: i + 1, pnl: cum }; });
+}
+
+function renderHandLoggerView(container) {
+  let hlView = 'stats'; // stats | add | history
+  let hlSelectedHand = null;
+
+  function draw() {
+    const hands = getHands();
+    const stats = calcHandStats(hands);
+    const sorted = [...hands].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    container.innerHTML = `
+    <div style="max-width:780px;margin:0 auto">
+
+      <!-- sub-nav -->
+      <div style="display:flex;gap:8px;margin-bottom:1.5rem;flex-wrap:wrap">
+        ${['stats','add','history'].map(v => `
+          <button class="btn btn-secondary btn-sm hl-tab${hlView===v?' active':''}" data-hl="${v}" style="font-family:var(--mono,monospace)">
+            ${v==='add'?'+ Log Hand':v==='history'?'History':'Stats'}
+          </button>`).join('')}
+        ${hands.length ? `<button class="btn btn-danger btn-sm" id="hl-clear" style="margin-left:auto">&#128465; Clear All</button>` : ''}
+      </div>
+
+      ${hlView === 'add' ? renderHLForm() : ''}
+      ${hlView === 'history' ? renderHLHistory(sorted) : ''}
+      ${hlView === 'stats'   ? renderHLStats(hands, stats) : ''}
+    </div>`;
+
+    // tab switching
+    container.querySelectorAll('.hl-tab').forEach(btn => {
+      btn.addEventListener('click', () => { hlView = btn.dataset.hl; draw(); });
+    });
+
+    // clear all
+    container.querySelector('#hl-clear')?.addEventListener('click', () => {
+      if (confirm('Delete ALL logged hands? Cannot be undone.')) { saveHands([]); draw(); }
+    });
+
+    // form submit
+    if (hlView === 'add') bindHLForm(container, () => { hlView = 'stats'; draw(); });
+
+    // history delete
+    container.querySelectorAll('.hl-del').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const updated = getHands().filter(h => h.id !== btn.dataset.id);
+        saveHands(updated); draw();
+      });
+    });
+
+    // matrix cell click
+    container.querySelectorAll('.hl-cell[data-ht]').forEach(cell => {
+      cell.addEventListener('click', () => {
+        const ht = cell.dataset.ht;
+        const hs = getHands().filter(h => h.handType === ht);
+        if (!hs.length) return;
+        const w = hs.filter(h => h.result === 'Win').length;
+        const pnl = hs.reduce((s, h) => s + (h.pnl || 0), 0);
+        const info = container.querySelector('#hl-hand-info');
+        if (info) info.innerHTML = `
+          <span style="font-family:monospace;font-weight:700;color:var(--green);font-size:1.1rem">${ht}</span>
+          <span style="font-size:0.78rem;color:var(--text2)">${hs.length} hands &nbsp;·&nbsp; ${((w/hs.length)*100).toFixed(0)}% win &nbsp;·&nbsp; ${pnl>=0?'+':''}${pnl.toFixed(0)} BB</span>
+          <button style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:1rem" id="hl-close-info">×</button>`;
+        container.querySelector('#hl-close-info')?.addEventListener('click', () => { if(info) info.innerHTML=''; });
+      });
+    });
+  }
+
+  /* ── STATS VIEW ── */
+  function renderHLStats(hands, stats) {
+    if (!stats) return `
+      <div style="text-align:center;padding:4rem 1rem;color:var(--text3)">
+        <div style="font-size:3rem;margin-bottom:1rem">♠♥♦♣</div>
+        <div style="font-size:1rem;color:var(--text2);margin-bottom:0.5rem">Your hand lab awaits</div>
+        <div style="font-size:0.78rem;margin-bottom:1.5rem">Log hands to unlock VPIP, PFR, 3-Bet, C-Bet, WTSD, P&amp;L curve and the 13×13 matrix heatmap</div>
+        <button class="btn btn-primary hl-tab" data-hl="add">+ Log First Hand</button>
+      </div>`;
+
+    const pnlData = hlPnlCurve(hands);
+    const heatmap = buildHeatmap(hands);
+
+    return `
+      <!-- KPI row 1 -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0.75rem;margin-bottom:0.75rem">
+        ${hlCard('Total Hands', stats.total, '', 'var(--green)')}
+        ${hlCard('Win Rate', stats.winRate+'%', stats.wins+'W / '+stats.losses+'L', parseFloat(stats.winRate)>=50?'var(--green)':'var(--red)')}
+        ${hlCard('Total P&L', (stats.totalPnl>=0?'+':'')+stats.totalPnl.toFixed(0)+' BB', stats.avgPnl+' BB/hand', stats.totalPnl>=0?'var(--green)':'var(--red)')}
+        ${hlCard('VPIP', stats.vpip+'%', 'Vol. put $ in pot', '#a78bfa')}
+      </div>
+      <!-- KPI row 2 -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0.75rem;margin-bottom:1.25rem">
+        ${hlCard('PFR', stats.pfr+'%', 'Preflop raise %', 'var(--gold)')}
+        ${hlCard('3-Bet', stats.threeBet+'%', '', '#ef4444')}
+        ${hlCard('C-Bet', stats.cbet+'%', 'Continuation bet', '#06b6d4')}
+        ${hlCard('WTSD / W$SD', stats.wtsd+'% / '+stats.wonAtSD+'%', 'Showdown stats', '#8b5cf6')}
+      </div>
+
+      <!-- P&L Curve -->
+      ${pnlData.length > 1 ? `
+      <div class="card" style="margin-bottom:1rem;padding:1rem 1.25rem">
+        <div style="font-size:0.75rem;font-weight:600;color:var(--text2);margin-bottom:0.75rem">📈 P&L Curve (BB)</div>
+        ${buildPnlSvg(pnlData)}
+        <div style="display:flex;justify-content:space-between;margin-top:4px">
+          <span style="font-size:0.65rem;color:var(--text3)">Hand #1</span>
+          <span style="font-size:0.65rem;color:var(--text3)">Hand #${pnlData.length}</span>
+        </div>
+      </div>` : ''}
+
+      <!-- Position chart -->
+      <div class="card" style="margin-bottom:1rem;padding:1rem 1.25rem">
+        <div style="font-size:0.75rem;font-weight:600;color:var(--text2);margin-bottom:0.75rem">🎯 Performance by Position</div>
+        ${buildPositionBars(hands)}
+      </div>
+
+      <!-- Hand Matrix -->
+      <div class="card" style="padding:1rem 1.25rem">
+        <div style="font-size:0.75rem;font-weight:600;color:var(--text2);margin-bottom:0.5rem">♠ Hand Matrix Heatmap <span style="font-size:0.65rem;color:var(--text3);font-weight:400">· green = profitable · red = losing · click for details</span></div>
+        <div id="hl-hand-info" style="display:flex;align-items:center;gap:1rem;min-height:1.6rem;margin-bottom:0.5rem;padding:0.4rem 0.75rem;background:rgba(0,212,170,0.05);border-radius:6px;border:1px solid rgba(0,212,170,0.1)"></div>
+        <div style="overflow-x:auto">${buildMatrix(heatmap)}</div>
+        <div style="display:flex;gap:1rem;margin-top:0.5rem;justify-content:center">
+          <span style="font-size:0.68rem;color:var(--text3);display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:rgba(0,212,170,0.4);display:inline-block"></span> Profitable</span>
+          <span style="font-size:0.68rem;color:var(--text3);display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:rgba(244,63,94,0.4);display:inline-block"></span> Losing</span>
+        </div>
+      </div>`;
+  }
+
+  /* ── HELPERS ── */
+  function hlCard(label, value, sub, accent) {
+    return `<div class="card" style="padding:1rem;position:relative;overflow:hidden">
+      <div style="position:absolute;top:-10px;right:-10px;width:50px;height:50px;border-radius:50%;background:${accent};opacity:0.1;filter:blur(12px)"></div>
+      <div style="font-size:0.65rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text3);margin-bottom:0.3rem">${label}</div>
+      <div style="font-size:1.5rem;font-weight:700;color:${accent};font-family:monospace;line-height:1.1">${value}</div>
+      ${sub ? `<div style="font-size:0.68rem;color:var(--text3);margin-top:0.2rem">${sub}</div>` : ''}
+    </div>`;
+  }
+
+  function buildPnlSvg(data) {
+    const W = 680, H = 120;
+    const vals = data.map(d => d.pnl);
+    const mn = Math.min(...vals, 0), mx = Math.max(...vals, 0);
+    const range = mx - mn || 1;
+    const pts = data.map((d, i) => {
+      const x = (i / Math.max(data.length - 1, 1)) * W;
+      const y = H - ((d.pnl - mn) / range) * H;
+      return `${x},${y}`;
+    }).join(' ');
+    const zeroY = H - ((0 - mn) / range) * H;
+    const fill = `0,${zeroY} ${pts} ${W},${zeroY}`;
+    const last = vals[vals.length - 1];
+    const col = last >= 0 ? '#00d4aa' : '#f43f5e';
+    return `<svg width="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="display:block;height:${H}px">
+      <defs><linearGradient id="hlGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${col}" stop-opacity="0.25"/>
+        <stop offset="100%" stop-color="${col}" stop-opacity="0"/>
+      </linearGradient></defs>
+      <line x1="0" y1="${zeroY}" x2="${W}" y2="${zeroY}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="4,4" stroke-width="1"/>
+      <polygon points="${fill}" fill="url(#hlGrad)"/>
+      <polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+  }
+
+  function buildPositionBars(hands) {
+    const map = {};
+    HL_POSITIONS.forEach(p => { map[p] = { total: 0, wins: 0, pnl: 0 }; });
+    hands.forEach(h => { if (map[h.position]) { map[h.position].total++; if (h.result==='Win') map[h.position].wins++; map[h.position].pnl += h.pnl||0; } });
+    const maxT = Math.max(...HL_POSITIONS.map(p => map[p].total), 1);
+    const bars = HL_POSITIONS.map(p => {
+      const s = map[p];
+      const h = s.total > 0 ? Math.max((s.total / maxT) * 100, 6) : 3;
+      const wr = s.total > 0 ? s.wins / s.total : 0;
+      const col = s.total === 0 ? 'rgba(255,255,255,0.06)' : wr >= 0.5 ? 'var(--green)' : 'var(--red)';
+      return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+        <span style="font-size:0.65rem;color:var(--text3);height:14px">${s.total>0 ? ((wr*100).toFixed(0)+'%') : ''}</span>
+        <div style="width:100%;max-width:28px;height:${h}px;background:${col};border-radius:4px 4px 2px 2px;opacity:${s.total?0.8:0.3}" title="${p}: ${s.total} hands, ${s.pnl>=0?'+':''}${s.pnl.toFixed(0)} BB"></div>
+        <span style="font-size:0.65rem;font-weight:700;color:var(--text3)">${p}</span>
+      </div>`;
+    }).join('');
+    return `<div style="display:flex;align-items:flex-end;gap:4px;height:140px;padding:0 4px">${bars}</div>`;
+  }
+
+  function buildHeatmap(hands) {
+    const map = {};
+    hands.forEach(h => {
+      if (!h.handType) return;
+      if (!map[h.handType]) map[h.handType] = { total: 0, wins: 0, pnl: 0 };
+      map[h.handType].total++;
+      if (h.result === 'Win') map[h.handType].wins++;
+      map[h.handType].pnl += h.pnl || 0;
+    });
+    return map;
+  }
+
+  function buildMatrix(heatmap) {
+    const cells = HL_HAND_TYPES.map(ht => {
+      const d = heatmap[ht];
+      const count = d ? d.total : 0;
+      const wr = d && d.total > 0 ? d.wins / d.total : 0;
+      let bg = 'rgba(255,255,255,0.02)';
+      if (count > 0) bg = d.pnl > 0 ? `rgba(0,212,170,${Math.min(0.15 + wr*0.5, 0.6)})` : `rgba(244,63,94,${Math.min(0.15 + (1-wr)*0.4, 0.5)})`;
+      const cursor = count > 0 ? 'pointer' : 'default';
+      const title = count > 0 ? `${ht}: ${count} hands, ${(wr*100).toFixed(0)}% win, ${d.pnl>=0?'+':''}${d.pnl.toFixed(0)} BB` : ht;
+      return `<div class="hl-cell" data-ht="${ht}" style="background:${bg};border:1px solid ${count>0?'rgba(255,255,255,0.1)':'rgba(255,255,255,0.03)'};border-radius:3px;padding:3px 1px;text-align:center;cursor:${cursor};min-height:32px;display:flex;flex-direction:column;align-items:center;justify-content:center" title="${title}">
+        <span style="font-size:0.6rem;font-weight:700;font-family:monospace;color:${count>0?'#fff':'rgba(255,255,255,0.2)'};letter-spacing:-0.5px">${ht}</span>
+        ${count > 0 ? `<span style="font-size:0.5rem;color:rgba(255,255,255,0.45)">${count}</span>` : ''}
+      </div>`;
+    }).join('');
+    return `<div style="display:grid;grid-template-columns:repeat(13,1fr);gap:2px;min-width:480px">${cells}</div>`;
+  }
+
+  /* ── HISTORY VIEW ── */
+  function renderHLHistory(sorted) {
+    if (!sorted.length) return `<div style="text-align:center;padding:3rem;color:var(--text3)">🃏 No hands recorded yet</div>`;
+    const rows = sorted.slice(0, 100).map(h => {
+      const pnl = h.pnl || 0;
+      const pnlCol = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+      const resCol = h.result==='Win' ? 'var(--green)' : h.result==='Loss' ? 'var(--red)' : 'var(--gold)';
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:0.6rem 0.75rem;border-bottom:1px solid rgba(255,255,255,0.04)">
+        <div style="display:flex;align-items:center;gap:0.75rem">
+          <span style="font-weight:700;font-family:monospace;color:${resCol};min-width:36px">${h.handType||'??'}</span>
+          <span style="font-size:0.7rem;padding:1px 8px;border-radius:12px;background:rgba(255,255,255,0.06);color:var(--text3)">${h.position}</span>
+          <span style="font-size:0.7rem;color:var(--text3)">${h.preflopAction}</span>
+          <span style="font-size:0.68rem;color:var(--text3)">${h.date}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.75rem">
+          <span style="font-weight:700;font-family:monospace;color:${pnlCol}">${pnl>=0?'+':''}${pnl.toFixed(0)} BB</span>
+          <button class="btn-icon hl-del" data-id="${h.id}" title="Delete">✕</button>
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="card" style="overflow:hidden;padding:0"><div style="max-height:500px;overflow-y:auto">${rows}</div></div>`;
+  }
+
+  /* ── ADD HAND FORM ── */
+  function renderHLForm() {
+    const today = new Date().toISOString().slice(0, 10);
+    const chipSet = (items, name, defaultVal, colorFn) => items.map(v =>
+      `<button type="button" class="hl-chip${v===defaultVal?' selected':''}" data-group="${name}" data-val="${v}" style="${chipStyle(v===defaultVal, colorFn?colorFn(v):null)}">${v}</button>`
+    ).join('');
+
+    return `<div class="card" style="padding:1.25rem">
+      <form id="hl-form" style="display:flex;flex-direction:column;gap:1.25rem">
+        <div><label style="${lblS}">Date</label><input type="date" name="date" value="${today}" style="${inpS}"></div>
+        <div><label style="${lblS}">Hand Type</label>
+          <select name="handType" style="${inpS}">
+            <option value="">Select hand...</option>
+            ${HL_HAND_TYPES.map(h => `<option value="${h}">${h}</option>`).join('')}
+          </select>
+        </div>
+        <div><label style="${lblS}">Position</label><div style="display:flex;flex-wrap:wrap;gap:6px">${chipSet(HL_POSITIONS,'position','CO')}</div></div>
+        <div><label style="${lblS}">Preflop Action</label><div style="display:flex;flex-wrap:wrap;gap:6px">${chipSet(HL_ACTIONS,'preflopAction','Raise', v=>v==='Fold'?'var(--red)':v==='All-In'?'var(--gold)':null)}</div></div>
+        <div><label style="${lblS}">Street Progression</label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button type="button" class="hl-chip" data-group="sawFlop" data-val="true">Saw Flop</button>
+            <button type="button" class="hl-chip" data-group="cbet" data-val="true">C-Bet</button>
+            <button type="button" class="hl-chip" data-group="wentToShowdown" data-val="true">Went to SD</button>
+          </div>
+        </div>
+        <div><label style="${lblS}">Result</label>
+          <div style="display:flex;gap:6px">
+            <button type="button" class="hl-chip selected" data-group="result" data-val="Win" style="${chipStyle(true,'var(--green)')}">Win</button>
+            <button type="button" class="hl-chip" data-group="result" data-val="Loss" style="${chipStyle(false,'var(--red)')}">Loss</button>
+            <button type="button" class="hl-chip" data-group="result" data-val="Break Even" style="${chipStyle(false,'var(--gold)')}">Break Even</button>
+          </div>
+        </div>
+        <div><label style="${lblS}">Profit / Loss (BB)</label><input type="number" name="pnl" value="0" placeholder="e.g. +25 or -10" style="${inpS}" step="0.5"></div>
+        <div><label style="${lblS}">Notes</label><textarea name="notes" placeholder="Villain tendencies, reads, mistakes..." style="${inpS}min-height:60px;resize:vertical"></textarea></div>
+        <div style="display:flex;gap:0.75rem">
+          <button type="submit" class="btn btn-primary" style="flex:1">Save Hand</button>
+          <button type="button" class="btn btn-secondary hl-tab" data-hl="stats">Cancel</button>
+        </div>
+      </form>
+    </div>`;
+  }
+
+  const lblS = 'display:block;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text3);margin-bottom:0.4rem;';
+  const inpS = 'width:100%;padding:0.55rem 0.75rem;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:0.85rem;outline:none;box-sizing:border-box;';
+
+  function chipStyle(active, color) {
+    const c = color || 'var(--green)';
+    return active
+      ? `padding:5px 14px;border-radius:20px;border:1px solid ${c};background:${c}22;color:${c};font-size:0.75rem;font-weight:600;cursor:pointer;font-family:monospace;`
+      : `padding:5px 14px;border-radius:20px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:var(--text3);font-size:0.75rem;font-weight:600;cursor:pointer;font-family:monospace;`;
+  }
+
+  function bindHLForm(c, onDone) {
+    // chip toggles
+    c.querySelectorAll('.hl-chip[data-group]').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const group = chip.dataset.group;
+        const isBool = ['sawFlop','cbet','wentToShowdown'].includes(group);
+        if (isBool) {
+          chip.classList.toggle('selected');
+          const isActive = chip.classList.contains('selected');
+          chip.setAttribute('style', chipStyle(isActive));
+        } else {
+          c.querySelectorAll(`.hl-chip[data-group="${group}"]`).forEach(b => {
+            b.classList.remove('selected');
+            b.setAttribute('style', chipStyle(false, b.dataset.group==='result'?(b.dataset.val==='Win'?'var(--green)':b.dataset.val==='Loss'?'var(--red)':'var(--gold)'):null));
+          });
+          chip.classList.add('selected');
+          const col = group==='result'?(chip.dataset.val==='Win'?'var(--green)':chip.dataset.val==='Loss'?'var(--red)':'var(--gold)')
+                     : group==='preflopAction'?(chip.dataset.val==='Fold'?'var(--red)':chip.dataset.val==='All-In'?'var(--gold)':null) : null;
+          chip.setAttribute('style', chipStyle(true, col));
+        }
+      });
+    });
+
+    // tab links inside form
+    c.querySelectorAll('.hl-chip.hl-tab, .btn.hl-tab').forEach(btn => {
+      btn.addEventListener('click', () => { hlView = btn.dataset.hl; draw(); });
+    });
+
+    c.querySelector('#hl-form')?.addEventListener('submit', e => {
+      e.preventDefault();
+      const f = e.target;
+      const getChip = group => c.querySelector(`.hl-chip.selected[data-group="${group}"]`)?.dataset.val;
+      const getBool = group => !!c.querySelector(`.hl-chip.selected[data-group="${group}"]`);
+      const ht = f.handType.value;
+      if (!ht) { alert('Select a hand type'); return; }
+      const hand = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2,7),
+        date: f.date.value,
+        handType: ht,
+        position: getChip('position') || 'CO',
+        preflopAction: getChip('preflopAction') || 'Raise',
+        sawFlop: getBool('sawFlop'),
+        cbet: getBool('cbet'),
+        wentToShowdown: getBool('wentToShowdown'),
+        result: getChip('result') || 'Win',
+        pnl: parseFloat(f.pnl.value) || 0,
+        notes: f.notes.value.trim(),
+      };
+      const updated = [...getHands(), hand];
+      saveHands(updated);
+      onDone();
+    });
+  }
+
+  draw();
 }
 
 // ===== INIT =====
