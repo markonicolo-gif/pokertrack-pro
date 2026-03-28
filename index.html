@@ -929,15 +929,25 @@ async function parseXMLSessions(zip, xmlEntries) {
       }
       if (!duration) duration = Math.max(0.25, Math.round(games.length / 30 * 4) / 4);
 
-      // Total rake paid by player this session
-      let totalRake = 0;
+      // Total rake, showdown winnings, non-showdown winnings per session
+      let totalRake = 0, showdownWin = 0, nonShowdownWin = 0;
       if (nickname) {
         games.forEach(game => {
           const p = game.querySelector(`players player[name="${nickname}"]`);
-          if (p) totalRake += parseAmt(p.getAttribute('rakeamount') || '0');
+          if (!p) return;
+          totalRake += parseAmt(p.getAttribute('rakeamount') || '0');
+          const win = parseAmt(p.getAttribute('win') || '0');
+          const bet = parseAmt(p.getAttribute('bet') || '0');
+          const net = win - bet;
+          // Winamax: showdown round present when cards go to showdown
+          const hasShowdown = !!game.querySelector('round[id="showdown"]');
+          if (hasShowdown) showdownWin += net;
+          else nonShowdownWin += net;
         });
       }
       totalRake = Math.round(totalRake * 100) / 100;
+      showdownWin = Math.round(showdownWin * 100) / 100;
+      nonShowdownWin = Math.round(nonShowdownWin * 100) / 100;
 
       sessions.push({
         date,
@@ -952,6 +962,8 @@ async function parseXMLSessions(zip, xmlEntries) {
         mood: 3,
         rake: totalRake,
         hands: games.length,
+        showdownWin,
+        nonShowdownWin,
         notes: `${games.length} hands · ${currency} · rake €${totalRake}`,
       });
     } catch (e) { /* skip malformed file */ }
@@ -2041,19 +2053,42 @@ function renderAllCharts(container, sessions) {
   };
 
   // 1. Cumulative Profit
-  let cum = 0;
+  let cum = 0, cumSD = 0, cumNSD = 0;
   const cumPts = sorted.map(s => { cum += s.cashOut - s.buyIn; return cum; });
-  const cumColors = cumPts.map(v => v >= 0 ? 'rgba(0,212,170,0.15)' : 'rgba(244,63,94,0.15)');
+  const hasHandData = sorted.some(s => s.showdownWin !== undefined);
+  const cumSDPts  = hasHandData ? sorted.map(s => { cumSD  += (s.showdownWin  ?? 0); return Math.round(cumSD  * 100) / 100; }) : null;
+  const cumNSDPts = hasHandData ? sorted.map(s => { cumNSD += (s.nonShowdownWin ?? 0); return Math.round(cumNSD * 100) / 100; }) : null;
+
+  // EV line: linear regression through cumulative points
+  const n = cumPts.length;
+  const xMean = (n - 1) / 2;
+  const yMean = cumPts.reduce((a, b) => a + b, 0) / n;
+  const slope = cumPts.reduce((s, y, i) => s + (i - xMean) * (y - yMean), 0) /
+                cumPts.reduce((s, _, i) => s + (i - xMean) ** 2, 0);
+  const intercept = yMean - slope * xMean;
+  const evLine = cumPts.map((_, i) => Math.round((intercept + slope * i) * 100) / 100);
+
+  const cumDatasets = [
+    { label: 'Net Profit', data: cumPts, borderColor: cumPts[cumPts.length-1] >= 0 ? '#00d4aa' : '#f43f5e', backgroundColor: cumPts[cumPts.length-1] >= 0 ? 'rgba(0,212,170,0.06)' : 'rgba(244,63,94,0.06)', fill: true, tension: 0.3, pointRadius: sorted.length < 30 ? 3 : 0, pointHoverRadius: 5, borderWidth: 2 },
+    { label: 'EV (trend)', data: evLine, borderColor: '#f59e0b', backgroundColor: 'transparent', fill: false, tension: 0, pointRadius: 0, pointHoverRadius: 4, borderWidth: 1.5, borderDash: [6, 3] },
+    { label: 'Zero', data: sorted.map(() => 0), borderColor: 'rgba(255,255,255,0.08)', borderDash: [4,4], borderWidth: 1, pointRadius: 0, tension: 0 },
+  ];
+  if (cumSDPts)  cumDatasets.splice(1, 0, { label: 'Showdown',     data: cumSDPts,  borderColor: '#3b82f6', backgroundColor: 'transparent', fill: false, tension: 0.3, pointRadius: 0, pointHoverRadius: 4, borderWidth: 1.5 });
+  if (cumNSDPts) cumDatasets.splice(2, 0, { label: 'Non-showdown', data: cumNSDPts, borderColor: '#8b5cf6', backgroundColor: 'transparent', fill: false, tension: 0.3, pointRadius: 0, pointHoverRadius: 4, borderWidth: 1.5 });
+
   activeCharts.push(new Chart(container.querySelector('#ch-cum'), {
     type: 'line',
-    data: {
-      labels: sorted.map(s => s.date),
-      datasets: [
-        { label: 'Cumulative', data: cumPts, borderColor: cumPts[cumPts.length-1] >= 0 ? '#00d4aa' : '#f43f5e', backgroundColor: cumPts[cumPts.length-1] >= 0 ? 'rgba(0,212,170,0.08)' : 'rgba(244,63,94,0.08)', fill: true, tension: 0.3, pointRadius: sorted.length < 30 ? 3 : 0, pointHoverRadius: 5, borderWidth: 2 },
-        { label: 'Zero line', data: sorted.map(() => 0), borderColor: 'rgba(255,255,255,0.1)', borderDash: [4,4], borderWidth: 1, pointRadius: 0, tension: 0 }
-      ]
-    },
-    options: { ...chartDefaults, plugins: { ...chartDefaults.plugins, tooltip: { ...tooltipDefaults, filter: item => item.datasetIndex === 0, callbacks: { title: ctx => ctx[0]?.label || '', label: ctx => { const v = ctx.parsed.y; return (v >= 0 ? '+' : '') + '€' + v.toLocaleString('en', { minimumFractionDigits: 0, maximumFractionDigits: 2 }); } } } } }
+    data: { labels: sorted.map(s => s.date), datasets: cumDatasets },
+    options: {
+      ...chartDefaults,
+      plugins: {
+        legend: { display: true, labels: { color: '#64748b', font: { size: 11 }, boxWidth: 24, padding: 12, filter: item => item.text !== 'Zero' } },
+        tooltip: { ...tooltipDefaults, filter: item => item.dataset.label !== 'Zero', callbacks: {
+          title: ctx => ctx[0]?.label || '',
+          label: ctx => { const v = ctx.parsed.y; return `${ctx.dataset.label}: ${v >= 0 ? '+' : ''}€${v.toLocaleString('en', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`; }
+        }}
+      }
+    }
   }));
 
   // 2. Monthly
