@@ -181,6 +181,7 @@ body {
 .btn-primary:hover { background: #00e6b8; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,212,170,0.3); }
 .btn-secondary { background: rgba(255,255,255,0.06); color: var(--text); border: 1px solid var(--border); }
 .btn-secondary:hover { background: rgba(255,255,255,0.1); border-color: var(--border2); }
+.btn-secondary.active { background: var(--green-dim); color: var(--green); border-color: rgba(0,212,170,0.3); }
 .btn-danger { background: var(--red-dim); color: var(--red); border: 1px solid rgba(244,63,94,0.2); }
 .btn-danger:hover { background: rgba(244,63,94,0.25); }
 .btn-gold { background: var(--gold-dim); color: var(--gold); border: 1px solid rgba(245,158,11,0.2); }
@@ -339,6 +340,37 @@ tr:last-child td { border-bottom: none; }
 .notes-cell { max-width: 160px; overflow: hidden; text-overflow: ellipsis; color: var(--text3) !important; font-weight: 400 !important; }
 .action-cell { display: flex; gap: 0.2rem; }
 
+/* ===== GROUP BUTTON GROUP ===== */
+.group-btn-group { display: flex; gap: 0; }
+.group-btn-group .btn { border-radius: 0; border-right-width: 0; }
+.group-btn-group .btn:first-child { border-radius: 6px 0 0 6px; }
+.group-btn-group .btn:last-child { border-radius: 0 6px 6px 0; border-right-width: 1px; }
+
+/* ===== DAY GROUP STYLES ===== */
+.day-group-header { cursor: pointer; user-select: none; }
+.day-group-header:hover .day-group-th { background: rgba(255,255,255,0.06) !important; }
+.day-group-th {
+  padding: 0.55rem 0.75rem !important;
+  background: rgba(255,255,255,0.03) !important;
+  border-top: 1px solid var(--border2) !important;
+  border-bottom: 1px solid var(--border) !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-size: 0.82rem !important;
+  font-weight: 500 !important;
+  color: var(--text) !important;
+}
+.day-group-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.day-group-left { display: flex; align-items: center; gap: 0.6rem; }
+.day-group-right { display: flex; align-items: center; gap: 1rem; }
+.day-toggle { font-size: 0.65rem; color: var(--text3); transition: transform 0.15s; }
+.day-date { font-weight: 600; color: var(--text); }
+.day-count { font-size: 0.75rem; color: var(--text3); background: rgba(255,255,255,0.06); padding: 0.1rem 0.5rem; border-radius: 999px; }
+.day-hours { font-size: 0.78rem; color: var(--text2); }
+.day-profit { font-size: 0.85rem; font-weight: 700; }
+.day-cols-header { background: var(--bg2) !important; }
+.day-cols-header th { background: var(--bg2) !important; font-size: 0.7rem !important; padding: 0.3rem 0.75rem !important; }
+
 .profit-bar {
   display: inline-flex; align-items: center; gap: 0.4rem;
 }
@@ -361,6 +393,30 @@ tr:last-child td { border-bottom: none; }
   border-radius: 8px;
   font-size: 0.82rem;
   width: 200px;
+}
+
+.pagination-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 0.75rem;
+  padding: 0.9rem 0.5rem 0.25rem;
+  border-top: 1px solid var(--border);
+  margin-top: 0.5rem;
+}
+.pagination-info { font-size: 0.78rem; color: var(--text3); }
+.pagination-info strong { color: var(--text2); }
+.pagination-controls { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
+.page-btn {
+  padding: 0.3rem 0.65rem; border-radius: 7px; border: 1px solid var(--border);
+  background: var(--bg3); color: var(--text2); font-size: 0.8rem;
+  cursor: pointer; transition: all var(--transition); font-family: inherit;
+}
+.page-btn:hover:not(:disabled) { border-color: var(--green); color: var(--green); background: var(--green-dim); }
+.page-btn.active { background: var(--green); color: #000; border-color: var(--green); font-weight: 700; }
+.page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.page-ellipsis { color: var(--text3); padding: 0 0.2rem; font-size: 0.8rem; }
+.pagination-size select {
+  background: var(--bg3); border: 1px solid var(--border); color: var(--text2);
+  padding: 0.3rem 0.5rem; border-radius: 7px; font-size: 0.78rem; font-family: inherit; cursor: pointer;
 }
 
 .bulk-toolbar {
@@ -952,6 +1008,10 @@ let currentView = 'dashboard';
 let editingId = null;
 let bulkMode = false;
 let selectedIds = new Set();
+let currentPage = 1;
+let pageSize = 50;
+let groupMode = null; // null | 'day' | 'week' | 'month'
+let collapsedDays = new Set();
 let sortCol = 'date', sortAsc = false;
 let activeCharts = [];
 let liveTimer = null;
@@ -1202,6 +1262,11 @@ function renderSessionsView(container) {
             <span id="csv-drop-label">&#8593; Import CSV</span>
             <input type="file" id="csv-input" accept=".csv,.zip" style="display:none">
           </div>
+          <div class="group-btn-group">
+            <button class="btn btn-secondary btn-sm${groupMode === 'day' ? ' active' : ''}" id="group-day-btn" ${sessions.length === 0 ? 'disabled' : ''} data-mode="day">&#128197; Day</button>
+            <button class="btn btn-secondary btn-sm${groupMode === 'week' ? ' active' : ''}" id="group-week-btn" ${sessions.length === 0 ? 'disabled' : ''} data-mode="week">Week</button>
+            <button class="btn btn-secondary btn-sm${groupMode === 'month' ? ' active' : ''}" id="group-month-btn" ${sessions.length === 0 ? 'disabled' : ''} data-mode="month">Month</button>
+          </div>
           <button class="btn btn-secondary btn-sm" id="bulk-btn" ${sessions.length === 0 ? 'disabled' : ''}>&#9745; Bulk Select</button>
           <button class="btn btn-secondary btn-sm" id="export-btn" ${sessions.length === 0 ? 'disabled' : ''}>&#8595; Export CSV</button>
           <button class="btn btn-danger btn-sm" id="clear-btn" ${sessions.length === 0 ? 'disabled' : ''}>&#128465; Clear All</button>
@@ -1337,12 +1402,182 @@ function renderTable(sessions, search = '') {
 
   if (sorted.length === 0) return `<div class="empty-state" style="padding:2rem"><div class="empty-sub">No sessions match your search</div></div>`;
 
+  // GROUP mode (day / week / month)
+  if (groupMode && !bulkMode) {
+    function getGroupKey(s) {
+      if (!s.date) return 'Unknown';
+      if (groupMode === 'day') return s.date;
+      if (groupMode === 'week') {
+        const d = new Date(s.date + 'T12:00:00');
+        const day = d.getDay() === 0 ? 6 : d.getDay() - 1; // Mon=0
+        const mon = new Date(d); mon.setDate(d.getDate() - day);
+        const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+        return mon.toISOString().slice(0, 10) + '_' + sun.toISOString().slice(0, 10);
+      }
+      if (groupMode === 'month') return s.date.slice(0, 7);
+      return s.date;
+    }
+    function getGroupLabel(key) {
+      if (groupMode === 'day') {
+        return new Date(key + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+      }
+      if (groupMode === 'week') {
+        const [from, to] = key.split('_');
+        const fd = new Date(from + 'T12:00:00'), td = new Date(to + 'T12:00:00');
+        return fd.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' – ' + td.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+      }
+      if (groupMode === 'month') {
+        const [y, m] = key.split('-');
+        return new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+      }
+      return key;
+    }
+
+    const groups = {};
+    sorted.forEach(s => { const k = getGroupKey(s); if (!groups[k]) groups[k] = []; groups[k].push(s); });
+    const keys = Object.keys(groups).sort((a, b) => sortAsc ? a.localeCompare(b) : b.localeCompare(a));
+
+    const totalPages = Math.ceil(keys.length / pageSize);
+    currentPage = Math.min(currentPage, Math.max(1, totalPages));
+    const start = (currentPage - 1) * pageSize;
+    const pageKeys = keys.slice(start, start + pageSize);
+
+    const pageNums = [];
+    if (totalPages <= 7) { for (let i = 1; i <= totalPages; i++) pageNums.push(i); }
+    else {
+      pageNums.push(1);
+      if (currentPage > 3) pageNums.push('...');
+      for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) pageNums.push(i);
+      if (currentPage < totalPages - 2) pageNums.push('...');
+      pageNums.push(totalPages);
+    }
+
+    const unitLabel = groupMode === 'day' ? 'days' : groupMode === 'week' ? 'weeks' : 'months';
+    const pageSizeOpts = groupMode === 'day' ? [7,14,30,60] : groupMode === 'week' ? [4,8,13,26] : [3,6,12,24];
+
+    const paginationBar = `
+      <div class="pagination-bar">
+        <div class="pagination-info">Showing <strong>${start + 1}–${Math.min(start + pageSize, keys.length)}</strong> of <strong>${keys.length}</strong> ${unitLabel}</div>
+        <div class="pagination-controls">
+          <button class="page-btn" data-page="${currentPage - 1}" ${currentPage === 1 ? 'disabled' : ''}>‹ Prev</button>
+          ${pageNums.map(p => p === '...' ? `<span class="page-ellipsis">…</span>` : `<button class="page-btn ${p === currentPage ? 'active' : ''}" data-page="${p}">${p}</button>`).join('')}
+          <button class="page-btn" data-page="${currentPage + 1}" ${currentPage === totalPages ? 'disabled' : ''}>Next ›</button>
+        </div>
+        <div class="pagination-size">
+          <select id="page-size-select">${pageSizeOpts.map(n => `<option value="${n}" ${n === pageSize ? 'selected' : ''}>${n} ${unitLabel} / page</option>`).join('')}</select>
+        </div>
+      </div>`;
+
+    const cols = [
+      { label: 'Date' }, { label: 'Location' }, { label: 'Game' }, { label: 'Stakes' },
+      { label: 'Buy-in' }, { label: 'Cash-out' }, { label: 'Profit' }, { label: 'Hours' }, { label: '€/hr' },
+    ];
+
+    let html = `<div class="table-wrapper"><table>`;
+    pageKeys.forEach(key => {
+      const grpSessions = groups[key];
+      const grpProfit = grpSessions.reduce((s, x) => s + (x.cashOut - x.buyIn), 0);
+      const grpHours = grpSessions.reduce((s, x) => s + (x.duration || 0), 0);
+      const isOpen = !collapsedDays.has(key);
+      const label = getGroupLabel(key);
+
+      html += `
+        <thead>
+          <tr class="day-group-header" data-date="${key}">
+            <th colspan="11" class="day-group-th">
+              <div class="day-group-row">
+                <div class="day-group-left">
+                  <span class="day-toggle">${isOpen ? '▼' : '▶'}</span>
+                  <span class="day-date">${label}</span>
+                  <span class="day-count">${grpSessions.length} session${grpSessions.length > 1 ? 's' : ''}</span>
+                </div>
+                <div class="day-group-right">
+                  <span class="day-hours">${grpHours > 0 ? grpHours.toFixed(1) + 'h' : ''}</span>
+                  <span class="day-profit ${grpProfit > 0 ? 'positive' : grpProfit < 0 ? 'negative' : ''}">${grpProfit >= 0 ? '+' : ''}€${Math.abs(grpProfit).toFixed(0)}</span>
+                </div>
+              </div>
+            </th>
+          </tr>
+        </thead>`;
+
+      if (isOpen) {
+        html += `<thead><tr class="day-cols-header">`;
+        cols.forEach(c => { html += `<th>${c.label}</th>`; });
+        html += `<th>Mood</th><th>Notes</th><th></th></tr></thead>`;
+        html += `<tbody>`;
+        grpSessions.forEach(s => {
+          const p = s.cashOut - s.buyIn;
+          const hr = s.duration > 0 ? p / s.duration : null;
+          html += `<tr>
+            <td>${s.date}</td>
+            <td>${s.location || '<span style="color:var(--text3)">-</span>'}</td>
+            <td>${s.gameType || '<span style="color:var(--text3)">-</span>'}</td>
+            <td>${s.stakes ? `<span class="badge badge-blue">${s.stakes}</span>` : '<span style="color:var(--text3)">-</span>'}</td>
+            <td>€${s.buyIn.toLocaleString()}</td>
+            <td>€${s.cashOut.toLocaleString()}</td>
+            <td>${pill(p)}</td>
+            <td>${s.duration || '<span style="color:var(--text3)">-</span>'}</td>
+            <td class="${cls(hr)}">${hr !== null ? fmtHr(hr) : '<span style="color:var(--text3)">-</span>'}</td>
+            <td>${s.mood ? moodEmoji(s.mood) : ''}</td>
+            <td class="notes-cell" title="${(s.notes||'').replace(/"/g,'&quot;')}">${s.notes || '<span style="color:var(--text3)">-</span>'}</td>
+            <td class="action-cell">
+              <button class="btn-icon edit-btn" data-id="${s.id}" title="Edit">&#9998;</button>
+              <button class="btn-icon delete-btn" data-id="${s.id}" title="Delete">&#10005;</button>
+            </td>
+          </tr>`;
+        });
+        html += `</tbody>`;
+      }
+    });
+
+    html += `</table></div>${paginationBar}`;
+    return html;
+  }
+
+  // Pagination
+  const totalPages = Math.ceil(sorted.length / pageSize);
+  currentPage = Math.min(currentPage, totalPages);
+  const start = (currentPage - 1) * pageSize;
+  const paginated = bulkMode ? sorted : sorted.slice(start, start + pageSize);
+
+  // Page numbers to show (max 7 buttons)
+  const pageNums = [];
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) pageNums.push(i);
+  } else {
+    pageNums.push(1);
+    if (currentPage > 3) pageNums.push('...');
+    for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) pageNums.push(i);
+    if (currentPage < totalPages - 2) pageNums.push('...');
+    pageNums.push(totalPages);
+  }
+
+  const paginationBar = bulkMode ? '' : `
+    <div class="pagination-bar">
+      <div class="pagination-info">
+        Showing <strong>${start + 1}–${Math.min(start + pageSize, sorted.length)}</strong> of <strong>${sorted.length}</strong> sessions
+      </div>
+      <div class="pagination-controls">
+        <button class="page-btn" data-page="${currentPage - 1}" ${currentPage === 1 ? 'disabled' : ''}>‹ Prev</button>
+        ${pageNums.map(p => p === '...'
+          ? `<span class="page-ellipsis">…</span>`
+          : `<button class="page-btn ${p === currentPage ? 'active' : ''}" data-page="${p}">${p}</button>`
+        ).join('')}
+        <button class="page-btn" data-page="${currentPage + 1}" ${currentPage === totalPages ? 'disabled' : ''}>Next ›</button>
+      </div>
+      <div class="pagination-size">
+        <select id="page-size-select">
+          ${[25, 50, 100, 200].map(n => `<option value="${n}" ${n === pageSize ? 'selected' : ''}>${n} / page</option>`).join('')}
+        </select>
+      </div>
+    </div>`;
+
   let html = `<div class="table-wrapper"><table><thead><tr>`;
   if (bulkMode) html += `<th><input type="checkbox" id="bulk-check-all" title="Select all visible"></th>`;
   cols.forEach(c => { html += `<th class="sortable" data-sort="${c.key}">${c.label}${arrow(c.key)}</th>`; });
   html += `<th>Mood</th><th>Notes</th>${bulkMode ? '' : '<th></th>'}</tr></thead><tbody>`;
 
-  sorted.forEach(s => {
+  paginated.forEach(s => {
     const p = s.cashOut - s.buyIn;
     const hr = s.duration > 0 ? p / s.duration : null;
     const checked = selectedIds.has(s.id) ? 'checked' : '';
@@ -1367,7 +1602,7 @@ function renderTable(sessions, search = '') {
     </tr>`;
   });
 
-  html += `</tbody></table></div>`;
+  html += `</tbody></table></div>${paginationBar}`;
   return html;
 }
 
@@ -1433,6 +1668,7 @@ function bindSessionEvents(container) {
 
   // Search
   container.querySelector('#session-search').addEventListener('input', (e) => {
+    currentPage = 1;
     container.querySelector('#sessions-table-wrapper').innerHTML = renderTable(getSessions(), e.target.value);
     bindTableEvents(container);
   });
@@ -1464,6 +1700,42 @@ function bindSessionEvents(container) {
     c.querySelectorAll('.delete-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         if (confirm('Delete this session?')) { deleteSession(btn.dataset.id); renderSessionsView(c); }
+      });
+    });
+
+    // Pagination
+    c.querySelectorAll('.page-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const p = parseInt(btn.dataset.page);
+        if (!isNaN(p) && p >= 1) {
+          currentPage = p;
+          const search = c.querySelector('#session-search')?.value || '';
+          c.querySelector('#sessions-table-wrapper').innerHTML = renderTable(getSessions(), search);
+          bindTableEvents(c);
+          c.querySelector('#sessions-table-wrapper').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+
+    const pageSizeEl = c.querySelector('#page-size-select');
+    if (pageSizeEl) {
+      pageSizeEl.addEventListener('change', () => {
+        pageSize = parseInt(pageSizeEl.value);
+        currentPage = 1;
+        const search = c.querySelector('#session-search')?.value || '';
+        c.querySelector('#sessions-table-wrapper').innerHTML = renderTable(getSessions(), search);
+        bindTableEvents(c);
+      });
+    }
+
+    c.querySelectorAll('.day-group-header').forEach(row => {
+      row.addEventListener('click', () => {
+        const date = row.dataset.date;
+        if (collapsedDays.has(date)) collapsedDays.delete(date);
+        else collapsedDays.add(date);
+        const search = c.querySelector('#session-search')?.value || '';
+        c.querySelector('#sessions-table-wrapper').innerHTML = renderTable(getSessions(), search);
+        bindTableEvents(c);
       });
     });
   }
@@ -1582,6 +1854,25 @@ function bindSessionEvents(container) {
       });
     });
   }
+
+  ['day', 'week', 'month'].forEach(mode => {
+    const btn = container.querySelector(`#group-${mode}-btn`);
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      groupMode = groupMode === mode ? null : mode;
+      collapsedDays.clear();
+      currentPage = 1;
+      // reset pageSize to sensible default for mode
+      pageSize = mode === 'week' ? 4 : mode === 'month' ? 6 : 50;
+      const search = container.querySelector('#session-search')?.value || '';
+      container.querySelector('#sessions-table-wrapper').innerHTML = renderTable(getSessions(), search);
+      ['day','week','month'].forEach(m => {
+        const b = container.querySelector(`#group-${m}-btn`);
+        if (b) b.classList.toggle('active', groupMode === m);
+      });
+      bindTableEvents(container);
+    });
+  });
 
   container.querySelector('#bulk-btn').addEventListener('click', () => {
     bulkMode = true;
