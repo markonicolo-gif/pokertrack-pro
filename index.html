@@ -1,0 +1,2503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PokerTrack Pro</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3/dist/jszip.min.js"></script>
+<style>
+:root {
+  --bg: #07090f;
+  --bg2: #0d1117;
+  --bg3: #111827;
+  --card: #0f1623;
+  --card2: #151f2e;
+  --border: rgba(255,255,255,0.07);
+  --border2: rgba(255,255,255,0.12);
+  --text: #e2e8f0;
+  --text2: #94a3b8;
+  --text3: #64748b;
+  --green: #00d4aa;
+  --green2: #10b981;
+  --green-dim: rgba(0,212,170,0.12);
+  --red: #f43f5e;
+  --red-dim: rgba(244,63,94,0.12);
+  --gold: #f59e0b;
+  --gold-dim: rgba(245,158,11,0.12);
+  --blue: #3b82f6;
+  --blue-dim: rgba(59,130,246,0.12);
+  --purple: #8b5cf6;
+  --purple-dim: rgba(139,92,246,0.12);
+  --radius: 12px;
+  --radius-lg: 16px;
+  --sidebar-w: 220px;
+  --transition: 0.18s ease;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  overflow-x: hidden;
+}
+
+/* ===== SIDEBAR ===== */
+.sidebar {
+  width: var(--sidebar-w);
+  min-height: 100vh;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0; left: 0;
+  z-index: 200;
+  padding: 0 0 1rem;
+}
+
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1.4rem 1.2rem 1.2rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.5rem;
+}
+
+.logo-icon {
+  width: 32px; height: 32px;
+  background: linear-gradient(135deg, var(--green), #0891b2);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1rem;
+}
+
+.logo-text { font-size: 1rem; font-weight: 700; color: var(--text); }
+.logo-sub { font-size: 0.65rem; color: var(--text3); font-weight: 400; }
+
+.nav-section { padding: 0 0.75rem; margin-bottom: 0.25rem; }
+.nav-label { font-size: 0.65rem; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 1px; padding: 0.5rem 0.5rem 0.25rem; }
+
+.nav-item {
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all var(--transition);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text2);
+  border: none; background: none; width: 100%; text-align: left;
+  margin-bottom: 2px;
+}
+.nav-item:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+.nav-item.active { background: var(--green-dim); color: var(--green); }
+.nav-item.active .nav-icon { color: var(--green); }
+.nav-icon { font-size: 1rem; width: 18px; text-align: center; }
+
+.sidebar-bankroll {
+  margin: auto 0.75rem 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.9rem;
+}
+.sb-label { font-size: 0.7rem; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.3rem; }
+.sb-value { font-size: 1.3rem; font-weight: 700; color: var(--green); }
+.sb-input {
+  background: transparent;
+  border: none;
+  color: var(--green);
+  font-size: 1.3rem;
+  font-weight: 700;
+  font-family: inherit;
+  width: 100%;
+  outline: none;
+}
+.sb-input::placeholder { color: var(--text3); }
+
+/* ===== MAIN ===== */
+.main {
+  margin-left: var(--sidebar-w);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.85rem 1.75rem;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 100;
+}
+
+.topbar-title { font-size: 1.05rem; font-weight: 600; }
+.topbar-right { display: flex; align-items: center; gap: 0.75rem; }
+
+.live-badge {
+  display: flex; align-items: center; gap: 0.4rem;
+  background: rgba(244,63,94,0.15);
+  border: 1px solid rgba(244,63,94,0.3);
+  color: var(--red);
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.live-badge:hover { background: rgba(244,63,94,0.25); }
+.live-dot {
+  width: 6px; height: 6px;
+  background: var(--red);
+  border-radius: 50%;
+  animation: pulse 1.5s infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+.live-badge.active { background: rgba(0,212,170,0.15); border-color: rgba(0,212,170,0.3); color: var(--green); }
+.live-badge.active .live-dot { background: var(--green); }
+
+#content { padding: 1.5rem 1.75rem; flex: 1; }
+
+/* ===== BUTTONS ===== */
+.btn {
+  padding: 0.55rem 1.1rem;
+  border: none; border-radius: 8px;
+  font-size: 0.875rem; cursor: pointer;
+  transition: all var(--transition);
+  font-weight: 500; font-family: inherit;
+  display: inline-flex; align-items: center; gap: 0.4rem;
+}
+.btn-primary { background: var(--green); color: #000; }
+.btn-primary:hover { background: #00e6b8; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,212,170,0.3); }
+.btn-secondary { background: rgba(255,255,255,0.06); color: var(--text); border: 1px solid var(--border); }
+.btn-secondary:hover { background: rgba(255,255,255,0.1); border-color: var(--border2); }
+.btn-danger { background: var(--red-dim); color: var(--red); border: 1px solid rgba(244,63,94,0.2); }
+.btn-danger:hover { background: rgba(244,63,94,0.25); }
+.btn-gold { background: var(--gold-dim); color: var(--gold); border: 1px solid rgba(245,158,11,0.2); }
+.btn-gold:hover { background: rgba(245,158,11,0.25); }
+.btn-sm { padding: 0.38rem 0.8rem; font-size: 0.8rem; }
+.btn-xs { padding: 0.25rem 0.6rem; font-size: 0.75rem; }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+
+.btn-icon {
+  background: none; border: none;
+  color: var(--text3); cursor: pointer;
+  font-size: 0.9rem; padding: 0.35rem;
+  border-radius: 6px; transition: all var(--transition);
+  line-height: 1;
+}
+.btn-icon:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+.edit-btn:hover { color: var(--blue); }
+.delete-btn:hover { color: var(--red); }
+
+/* ===== CARDS ===== */
+.card {
+  background: var(--card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  padding: 1.25rem;
+}
+.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+.card-title { font-size: 0.875rem; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; }
+.card-title-lg { font-size: 1rem; font-weight: 600; color: var(--text); }
+
+/* ===== STAT CARDS ===== */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1rem;
+}
+
+.stat-card {
+  background: var(--card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  padding: 1.1rem 1.25rem;
+  position: relative;
+  overflow: hidden;
+  transition: border-color var(--transition), transform var(--transition);
+}
+.stat-card:hover { border-color: var(--border2); transform: translateY(-2px); }
+.stat-card::before {
+  content: ''; position: absolute;
+  top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent-color, var(--green)), transparent);
+  opacity: 0.6;
+}
+.stat-card.green::before { --accent-color: var(--green); }
+.stat-card.red::before { --accent-color: var(--red); }
+.stat-card.gold::before { --accent-color: var(--gold); }
+.stat-card.blue::before { --accent-color: var(--blue); }
+.stat-card.purple::before { --accent-color: var(--purple); }
+
+.stat-icon { font-size: 1.2rem; margin-bottom: 0.6rem; }
+.stat-label { font-size: 0.72rem; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; margin-bottom: 0.3rem; }
+.stat-value { font-size: 1.4rem; font-weight: 700; line-height: 1; }
+.stat-value.positive { color: var(--green); }
+.stat-value.negative { color: var(--red); }
+.stat-value.neutral { color: var(--text); }
+.stat-value.gold { color: var(--gold); }
+.stat-sub { font-size: 0.72rem; color: var(--text3); margin-top: 0.3rem; }
+
+/* ===== FORM ===== */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 0.9rem;
+}
+.form-group { display: flex; flex-direction: column; gap: 0.35rem; }
+.form-group.full { grid-column: 1 / -1; }
+.form-group.span2 { grid-column: span 2; }
+label { font-size: 0.75rem; color: var(--text2); font-weight: 500; }
+input, textarea, select {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.55rem 0.8rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  transition: border-color var(--transition);
+  -webkit-appearance: none;
+}
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(0,212,170,0.1);
+}
+select option { background: var(--bg3); }
+textarea { resize: vertical; min-height: 64px; }
+
+.mood-row { display: flex; gap: 0.5rem; }
+.mood-btn {
+  flex: 1; padding: 0.5rem;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px; cursor: pointer;
+  font-size: 1.2rem; text-align: center;
+  transition: all var(--transition);
+}
+.mood-btn:hover { border-color: var(--border2); background: var(--card2); }
+.mood-btn.selected { border-color: var(--green); background: var(--green-dim); }
+
+.tags-row { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.tag-chip {
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  color: var(--text2);
+  transition: all var(--transition);
+}
+.tag-chip:hover { border-color: var(--border2); color: var(--text); }
+.tag-chip.selected { background: var(--green-dim); border-color: rgba(0,212,170,0.4); color: var(--green); }
+
+.form-actions { display: flex; gap: 0.6rem; margin-top: 1rem; flex-wrap: wrap; }
+
+/* ===== TABLE ===== */
+.table-wrapper { overflow-x: auto; margin-top: 1rem; }
+table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+th {
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--text3);
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  background: var(--bg2);
+}
+th:first-child { border-radius: 8px 0 0 0; }
+th:last-child { border-radius: 0 8px 0 0; }
+th.sortable { cursor: pointer; }
+th.sortable:hover { color: var(--text); }
+td {
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  white-space: nowrap;
+  color: var(--text);
+}
+tr:hover td { background: rgba(255,255,255,0.025); }
+tr:last-child td { border-bottom: none; }
+.positive { color: var(--green) !important; font-weight: 600; }
+.negative { color: var(--red) !important; font-weight: 600; }
+.notes-cell { max-width: 160px; overflow: hidden; text-overflow: ellipsis; color: var(--text3) !important; font-weight: 400 !important; }
+.action-cell { display: flex; gap: 0.2rem; }
+
+.profit-bar {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+}
+.profit-pill {
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.profit-pill.pos { background: rgba(0,212,170,0.12); color: var(--green); }
+.profit-pill.neg { background: rgba(244,63,94,0.12); color: var(--red); }
+
+.table-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem; }
+.table-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.search-input {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  width: 200px;
+}
+
+.bulk-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 0.75rem;
+  background: rgba(244,63,94,0.06);
+  border: 1px solid rgba(244,63,94,0.2);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  margin-top: 0.75rem;
+}
+.bulk-filters { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.bulk-count { font-size: 0.82rem; font-weight: 600; color: var(--red); min-width: 80px; }
+
+.csv-drop-zone {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.38rem 0.8rem;
+  background: rgba(255,255,255,0.06);
+  border: 1px dashed var(--border2);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text2);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.csv-drop-zone:hover { background: rgba(255,255,255,0.1); border-color: var(--green); color: var(--text); }
+.csv-drop-zone.drag-over { background: var(--green-dim); border-color: var(--green); color: var(--green); transform: scale(1.03); }
+
+/* ===== CHARTS ===== */
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.25rem;
+}
+.chart-card {
+  background: var(--card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  padding: 1.25rem;
+}
+.chart-card.full { grid-column: 1 / -1; }
+.chart-card h3 { font-size: 0.82rem; color: var(--text2); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 1rem; }
+
+/* ===== FILTERS ===== */
+.filters-bar {
+  display: flex; align-items: flex-end; gap: 0.75rem; flex-wrap: wrap;
+  background: var(--card);
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  margin-bottom: 1.25rem;
+}
+.filter-group { display: flex; flex-direction: column; gap: 0.3rem; }
+.filter-group label { font-size: 0.72rem; color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.filter-group input, .filter-group select {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.42rem 0.7rem;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  min-width: 120px;
+}
+
+/* ===== DASHBOARD ===== */
+.hero-card {
+  background: linear-gradient(135deg, #0a1628 0%, #0d1f3c 50%, #0a1628 100%);
+  border: 1px solid rgba(0,212,170,0.15);
+  border-radius: var(--radius-lg);
+  padding: 1.75rem;
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 1.25rem;
+}
+.hero-card::before {
+  content: '';
+  position: absolute;
+  top: -60px; right: -60px;
+  width: 200px; height: 200px;
+  background: radial-gradient(circle, rgba(0,212,170,0.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+.hero-card::after {
+  content: '';
+  position: absolute;
+  bottom: -40px; left: 40%;
+  width: 300px; height: 200px;
+  background: radial-gradient(circle, rgba(59,130,246,0.04) 0%, transparent 70%);
+  pointer-events: none;
+}
+.hero-label { font-size: 0.8rem; color: var(--text3); font-weight: 500; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px; }
+.hero-profit { font-size: 2.8rem; font-weight: 800; line-height: 1; margin-bottom: 0.5rem; }
+.hero-profit.positive { color: var(--green); }
+.hero-profit.negative { color: var(--red); }
+.hero-meta { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+.hero-meta-item { font-size: 0.82rem; color: var(--text2); }
+.hero-meta-item span { color: var(--text); font-weight: 600; }
+
+.quick-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.dash-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+.recent-session {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.recent-session:last-child { border-bottom: none; }
+.recent-left { display: flex; flex-direction: column; gap: 0.2rem; }
+.recent-game { font-size: 0.875rem; font-weight: 500; }
+.recent-meta { font-size: 0.75rem; color: var(--text3); }
+.recent-profit { font-size: 1rem; font-weight: 700; }
+
+.streak-badge {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.streak-badge.win { background: var(--green-dim); color: var(--green); border: 1px solid rgba(0,212,170,0.2); }
+.streak-badge.loss { background: var(--red-dim); color: var(--red); border: 1px solid rgba(244,63,94,0.2); }
+
+/* ===== GOALS ===== */
+.goal-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+.goal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem; }
+.goal-title { font-size: 0.9rem; font-weight: 600; }
+.goal-meta { font-size: 0.78rem; color: var(--text3); margin-top: 0.15rem; }
+.goal-right { text-align: right; }
+.goal-pct { font-size: 1.4rem; font-weight: 700; }
+.progress-bar { height: 6px; background: rgba(255,255,255,0.06); border-radius: 999px; overflow: hidden; margin-bottom: 0.5rem; }
+.progress-fill { height: 100%; border-radius: 999px; transition: width 0.5s ease; }
+.goal-numbers { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text3); }
+
+.goals-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.goal-set-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+}
+.goal-set-title { font-size: 0.82rem; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.75rem; }
+
+/* ===== LIVE SESSION ===== */
+.live-layout { display: flex; flex-direction: column; gap: 1.25rem; }
+.live-timer-card {
+  background: linear-gradient(135deg, #1a0520 0%, #200d2e 100%);
+  border: 1px solid rgba(139,92,246,0.2);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+  text-align: center;
+}
+.timer-display { font-size: 4rem; font-weight: 800; color: var(--purple); font-variant-numeric: tabular-nums; letter-spacing: 2px; margin: 1rem 0; }
+.timer-label { font-size: 0.8rem; color: var(--text3); text-transform: uppercase; letter-spacing: 1px; }
+.live-stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+.live-stat { text-align: center; }
+.live-stat-label { font-size: 0.72rem; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.3rem; }
+.live-stat-value { font-size: 1.3rem; font-weight: 700; }
+
+/* ===== EMPTY STATE ===== */
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--text3);
+}
+.empty-icon { font-size: 3rem; margin-bottom: 1rem; }
+.empty-title { font-size: 1rem; font-weight: 600; color: var(--text2); margin-bottom: 0.5rem; }
+.empty-sub { font-size: 0.875rem; }
+
+/* ===== MISC ===== */
+.section-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.section-title small { font-size: 0.78rem; font-weight: 400; color: var(--text3); background: var(--bg3); padding: 0.15rem 0.6rem; border-radius: 999px; }
+
+.divider { height: 1px; background: var(--border); margin: 1.25rem 0; }
+
+.badge {
+  display: inline-flex; align-items: center;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.badge-green { background: var(--green-dim); color: var(--green); }
+.badge-red { background: var(--red-dim); color: var(--red); }
+.badge-gold { background: var(--gold-dim); color: var(--gold); }
+.badge-blue { background: var(--blue-dim); color: var(--blue); }
+
+.trend-up { color: var(--green); font-size: 0.8rem; }
+.trend-down { color: var(--red); font-size: 0.8rem; }
+
+/* ===== LEAK FINDER ===== */
+.leak-layout { display: flex; flex-direction: column; gap: 1.25rem; }
+
+.leak-header-row { display: grid; grid-template-columns: auto 1fr; gap: 1.25rem; align-items: start; }
+
+.health-score-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 1.5rem; text-align: center; min-width: 180px;
+}
+.health-score-ring { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+.health-score-inner { position: absolute; text-align: center; }
+.health-score-num { font-size: 1.8rem; font-weight: 800; line-height: 1; }
+.health-score-sub { font-size: 0.7rem; color: var(--text3); }
+.health-score-label { font-size: 1rem; font-weight: 700; margin-top: 0.75rem; }
+.health-score-meta { font-size: 0.72rem; color: var(--text3); margin-top: 0.2rem; }
+
+.leak-summary-col {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 1.25rem; display: flex; flex-direction: column; gap: 0.5rem;
+}
+.leak-summary-title { font-size: 0.82rem; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.25rem; }
+
+.leak-item {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.75rem; border-radius: 10px; cursor: pointer;
+  border: 1px solid transparent; transition: all var(--transition);
+}
+.leak-item:hover { border-color: var(--border2); background: rgba(255,255,255,0.03); }
+.leak-item.leak-critical { background: rgba(244,63,94,0.06); border-color: rgba(244,63,94,0.15); }
+.leak-item.leak-warning  { background: rgba(245,158,11,0.06); border-color: rgba(245,158,11,0.15); }
+.leak-item.leak-good     { background: rgba(0,212,170,0.06);  border-color: rgba(0,212,170,0.15); }
+.leak-icon { font-size: 1.3rem; flex-shrink: 0; }
+.leak-title { font-size: 0.875rem; font-weight: 600; margin-top: 0.25rem; }
+.leak-desc  { font-size: 0.78rem; color: var(--text2); margin-top: 0.2rem; }
+.leak-badge { font-size: 0.68rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 999px; display: inline-flex; }
+.leak-arrow { margin-left: auto; color: var(--text3); font-size: 1.2rem; }
+
+.leak-detail-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 1.5rem;
+  border-left-width: 3px; transition: all var(--transition);
+}
+.leak-detail-card:hover { border-color: var(--border2); }
+.leak-detail-critical { border-left-color: var(--red); }
+.leak-detail-warning  { border-left-color: var(--gold); }
+.leak-detail-good     { border-left-color: var(--green); }
+.leak-detail-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; }
+.leak-detail-icon { font-size: 2rem; }
+.leak-detail-title { font-size: 1rem; font-weight: 700; }
+.leak-detail-desc { font-size: 0.875rem; color: var(--text2); margin-bottom: 1rem; line-height: 1.6; }
+
+.leak-data-row { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+.leak-data-box {
+  background: var(--bg3); border: 1px solid var(--border); border-radius: 10px;
+  padding: 0.75rem 1rem; min-width: 140px;
+}
+.leak-data-label { font-size: 0.72rem; color: var(--text3); margin-bottom: 0.35rem; font-weight: 500; }
+.leak-data-value { font-size: 1.15rem; font-weight: 700; }
+
+.leak-fix {
+  background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.15);
+  border-radius: 10px; padding: 1rem;
+}
+.leak-fix-label { font-size: 0.78rem; font-weight: 700; color: var(--blue); margin-bottom: 0.4rem; }
+.leak-fix-text { font-size: 0.85rem; color: var(--text2); line-height: 1.6; }
+
+@media (max-width: 700px) {
+  .leak-header-row { grid-template-columns: 1fr; }
+  .health-score-card { display: flex; align-items: center; gap: 1rem; text-align: left; }
+}
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* ===== MODAL ===== */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 1rem;
+}
+.modal {
+  background: var(--card);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; }
+.modal-title { font-size: 1rem; font-weight: 700; }
+.modal-close { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 1.2rem; padding: 0.2rem; }
+.modal-close:hover { color: var(--text); }
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 1100px) {
+  .quick-stats { grid-template-columns: repeat(2, 1fr); }
+  .dash-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 900px) {
+  :root { --sidebar-w: 0px; }
+  .sidebar { display: none; }
+  .charts-grid { grid-template-columns: 1fr; }
+  .goals-grid { grid-template-columns: 1fr; }
+  .live-stats-row { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  #content { padding: 1rem; }
+  .quick-stats { grid-template-columns: repeat(2, 1fr); }
+  .form-grid { grid-template-columns: 1fr 1fr; }
+  .hero-profit { font-size: 2rem; }
+}
+@media (max-width: 420px) {
+  .form-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">&#9824;</div>
+    <div>
+      <div class="logo-text">PokerTrack</div>
+      <div class="logo-sub">PRO</div>
+    </div>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-label">Main</div>
+    <button class="nav-item active" data-view="dashboard">
+      <span class="nav-icon">&#9732;</span> Dashboard
+    </button>
+    <button class="nav-item" data-view="sessions">
+      <span class="nav-icon">&#43;</span> Log Session
+    </button>
+    <button class="nav-item" data-view="analytics">
+      <span class="nav-icon">&#9654;</span> Analytics
+    </button>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-label">Tools</div>
+    <button class="nav-item" data-view="live">
+      <span class="nav-icon">&#9679;</span> Live Session
+    </button>
+    <button class="nav-item" data-view="goals">
+      <span class="nav-icon">&#9733;</span> Goals
+    </button>
+    <button class="nav-item" data-view="leaks">
+      <span class="nav-icon">&#128269;</span> Leak Finder
+    </button>
+  </div>
+
+  <div class="sidebar-bankroll">
+    <div class="sb-label">&#128177; Bankroll</div>
+    <input class="sb-input" type="number" id="bankroll-input" placeholder="0" min="0" step="1">
+  </div>
+</aside>
+
+<!-- MAIN -->
+<div class="main">
+  <header class="topbar">
+    <div class="topbar-title" id="topbar-title">Dashboard</div>
+    <div class="topbar-right">
+      <button class="live-badge" id="live-toggle" onclick="toggleLiveNav()">
+        <div class="live-dot"></div>
+        <span id="live-toggle-label">No Live Session</span>
+      </button>
+    </div>
+  </header>
+
+  <main id="content"></main>
+</div>
+
+<!-- ADD SESSION MODAL (triggered from dashboard) -->
+<div class="modal-overlay" id="add-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">&#43; New Session</div>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div id="modal-form-container"></div>
+  </div>
+</div>
+
+<script>
+// ===== STORE =====
+const SK = 'pokerSessions_v2';
+const GK = 'pokerGoals_v2';
+const BK = 'pokerBankroll_v2';
+const LK = 'pokerLive_v2';
+
+function getSessions() {
+  try { return JSON.parse(localStorage.getItem(SK)) || []; } catch { return []; }
+}
+function saveSessions(s) { localStorage.setItem(SK, JSON.stringify(s)); }
+function addSession(s) { const arr = getSessions(); s.id = crypto.randomUUID(); arr.push(s); saveSessions(arr); return arr; }
+function updateSession(id, updates) {
+  const arr = getSessions();
+  const i = arr.findIndex(s => s.id === id);
+  if (i === -1) return arr;
+  arr[i] = { ...arr[i], ...updates };
+  saveSessions(arr); return arr;
+}
+function deleteSession(id) { const arr = getSessions().filter(s => s.id !== id); saveSessions(arr); return arr; }
+function clearAll() { localStorage.removeItem(SK); }
+
+function getGoals() { try { return JSON.parse(localStorage.getItem(GK)) || {}; } catch { return {}; } }
+function saveGoals(g) { localStorage.setItem(GK, JSON.stringify(g)); }
+
+function getBankroll() { return parseFloat(localStorage.getItem(BK)) || 0; }
+function saveBankroll(v) { localStorage.setItem(BK, String(v)); }
+
+function getLive() { try { return JSON.parse(localStorage.getItem(LK)) || null; } catch { return null; } }
+function saveLive(v) { if (v) localStorage.setItem(LK, JSON.stringify(v)); else localStorage.removeItem(LK); }
+
+// ===== XML HAND HISTORY PARSER =====
+async function parseXMLSessions(zip, xmlEntries) {
+  const parseAmt = (s) => parseFloat((s || '0').replace(/[^0-9.-]/g, '')) || 0;
+
+  const parseDateTime = (s) => {
+    // "03-22-2026 14:43:33"
+    const m = s && s.match(/(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
+    if (!m) return null;
+    return new Date(`${m[3]}-${m[1]}-${m[2]}T${m[4]}:${m[5]}:${m[6]}`);
+  };
+
+  const sessions = [];
+
+  for (const entry of xmlEntries) {
+    try {
+      const text = await entry.async('string');
+      const doc = new DOMParser().parseFromString(text, 'text/xml');
+
+      const gen = doc.querySelector('session > general');
+      if (!gen) continue;
+
+      const get = (tag) => gen.querySelector(tag)?.textContent?.trim() || '';
+
+      const nickname  = get('nickname');
+      const gametype  = get('gametype');
+      const startStr  = get('startdate');
+      const bets      = parseAmt(get('bets'));
+      const wins      = parseAmt(get('wins'));
+      const tablesize = get('tablesize');
+      const currency  = get('currency');
+
+      // Date: "03-22-2026 14:43:33" → "2026-03-22"
+      const dm = startStr.match(/(\d{2})-(\d{2})-(\d{4})/);
+      const date = dm ? `${dm[3]}-${dm[1]}-${dm[2]}` : '';
+      if (!date) continue;
+
+      // Extract stakes from gametype string e.g. "Omaha PL €0.25/€0.50"
+      const stakeMatch = gametype.match(/[\€\$\£]?([\d.]+)\/[\€\$\£]?([\d.]+)/);
+      const stakes = stakeMatch ? `${stakeMatch[1]}/${stakeMatch[2]}` : '';
+
+      // Normalise game type label
+      let gameType = gametype;
+      const gt = gametype.toLowerCase();
+      if (gt.includes('omaha') && gt.includes('hi')) gameType = 'PLO Hi/Lo';
+      else if (gt.includes('omaha')) gameType = 'PLO';
+      else if (gt.includes('hold')) gameType = "NL Hold'em";
+      else if (gt.includes('stud')) gameType = 'Stud';
+
+      // Buy-in = initial stack from first hand for this player
+      const games = doc.querySelectorAll('game');
+      let buyIn = 0;
+      if (games.length > 0 && nickname) {
+        const firstPlayer = games[0].querySelector(`players player[name="${nickname}"]`);
+        buyIn = parseAmt(firstPlayer?.getAttribute('chips') || '0');
+      }
+      if (!buyIn) buyIn = bets; // fallback
+
+      const cashOut = Math.max(0, Math.round((buyIn + (wins - bets)) * 100) / 100);
+      buyIn = Math.round(buyIn * 100) / 100;
+
+      // Duration: first game start → last game start + small buffer
+      let duration = 0;
+      if (games.length > 1) {
+        const lastStart = games[games.length - 1].querySelector('general startdate')?.textContent?.trim();
+        const t1 = parseDateTime(startStr);
+        const t2 = parseDateTime(lastStart);
+        if (t1 && t2 && t2 > t1) {
+          duration = Math.max(0.25, Math.round(((t2 - t1) / 3600000 + 0.1) * 4) / 4);
+        }
+      }
+      if (!duration) duration = Math.max(0.25, Math.round(games.length / 30 * 4) / 4);
+
+      // Total rake paid by player this session
+      let totalRake = 0;
+      if (nickname) {
+        games.forEach(game => {
+          const p = game.querySelector(`players player[name="${nickname}"]`);
+          if (p) totalRake += parseAmt(p.getAttribute('rakeamount') || '0');
+        });
+      }
+      totalRake = Math.round(totalRake * 100) / 100;
+
+      sessions.push({
+        date,
+        location: 'Online',
+        gameType,
+        stakes,
+        buyIn,
+        cashOut,
+        duration,
+        tableSize: tablesize,
+        tags: 'Online',
+        mood: 3,
+        rake: totalRake,
+        hands: games.length,
+        notes: `${games.length} hands · ${currency} · rake €${totalRake}`,
+      });
+    } catch (e) { /* skip malformed file */ }
+  }
+
+  return sessions;
+}
+
+// ===== CSV =====
+const CSV_HEADERS = ['date','location','gameType','stakes','buyIn','cashOut','duration','mood','tags','notes'];
+function exportToCSV(sessions) {
+  const rows = [CSV_HEADERS.join(',')];
+  for (const s of sessions) {
+    const row = CSV_HEADERS.map(h => {
+      const val = s[h] ?? '';
+      const str = String(val);
+      return str.includes(',') || str.includes('"') || str.includes('\n') ? '"' + str.replace(/"/g, '""') + '"' : str;
+    });
+    rows.push(row.join(','));
+  }
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'poker-sessions-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click(); URL.revokeObjectURL(url);
+}
+function importCSV(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target.result;
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      if (lines.length < 2) { resolve({ sessions: [], errors: ['Empty file'] }); return; }
+      const header = lines[0].toLowerCase();
+      const start = header.includes('date') ? 1 : 0;
+      const sessions = [], errors = [];
+      for (let i = start; i < lines.length; i++) {
+        const f = lines[i].split(',');
+        if (f.length < 5) { errors.push('Row ' + (i+1) + ': not enough fields'); continue; }
+        const buyIn = parseFloat(f[4] || f[3]);
+        const cashOut = parseFloat(f[5] || f[4]);
+        if (!f[0] || isNaN(buyIn) || isNaN(cashOut)) { errors.push('Row ' + (i+1) + ': invalid data'); continue; }
+        sessions.push({ date: f[0].trim(), location: (f[1]||'').trim(), gameType: (f[2]||'').trim(), stakes: (f[3]||'').trim(), buyIn, cashOut, duration: parseFloat(f[6])||0, notes: (f[9]||f[6]||'').trim() });
+      }
+      resolve({ sessions, errors });
+    };
+    reader.onerror = () => reject(new Error('Failed to read'));
+    reader.readAsText(file);
+  });
+}
+
+// ===== STATE =====
+let currentView = 'dashboard';
+let editingId = null;
+let bulkMode = false;
+let selectedIds = new Set();
+let sortCol = 'date', sortAsc = false;
+let activeCharts = [];
+let liveTimer = null;
+let sessionMood = 3;
+let sessionTags = [];
+const TAGS = ['Live', 'Online', 'Home Game', 'Tournament', 'Cash Game', 'Tilt', 'Best Game', 'Bad Beat', 'Deep Run', 'Rebuy'];
+const GAME_TYPES = ["NL Hold'em","PLO","PLO5","NL Hold'em 6-Max","PLO Hi/Lo","Stud","Mixed","Tournament","Sit & Go","Bounty","Deep Stack"];
+const STAKES_LIST = ["1/2","1/3","2/5","5/10","10/25","25/50","0.25/0.5","0.5/1","Freeroll","$10","$20","$50","$100","$200","$500"];
+
+// ===== UTILS =====
+function fmt(v, sign = true) {
+  if (v === null || v === undefined) return '-';
+  const s = sign && v > 0 ? '+' : '';
+  return s + '$' + Math.abs(v).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0});
+}
+function fmtHr(v) { return (v >= 0 ? '+' : '') + '$' + Math.abs(v).toFixed(2) + '/hr'; }
+function cls(v) { return v > 0 ? 'positive' : v < 0 ? 'negative' : ''; }
+function pill(v) { return `<span class="profit-pill ${v >= 0 ? 'pos' : 'neg'}">${fmt(v)}</span>`; }
+function moodEmoji(m) { return ['😴','😐','🙂','😊','🔥'][m - 1] || '🙂'; }
+
+function calcStats(sessions) {
+  if (!sessions.length) return null;
+  const profits = sessions.map(s => s.cashOut - s.buyIn);
+  const totalProfit = profits.reduce((a, b) => a + b, 0);
+  const totalHours = sessions.reduce((s, x) => s + (x.duration || 0), 0);
+  const totalBuyIn = sessions.reduce((s, x) => s + x.buyIn, 0);
+  const wins = sessions.filter(s => s.cashOut > s.buyIn).length;
+  const losses = sessions.filter(s => s.cashOut < s.buyIn).length;
+  const hourly = totalHours > 0 ? totalProfit / totalHours : 0;
+  const avgSession = totalProfit / sessions.length;
+  const biggestWin = Math.max(...profits);
+  const biggestLoss = Math.min(...profits);
+
+  // Streak
+  const sorted = [...sessions].sort((a, b) => a.date.localeCompare(b.date));
+  let streak = 0, streakType = null;
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const p = sorted[i].cashOut - sorted[i].buyIn;
+    const t = p > 0 ? 'win' : p < 0 ? 'loss' : null;
+    if (t === null) break;
+    if (streakType === null) { streakType = t; streak = 1; }
+    else if (t === streakType) streak++;
+    else break;
+  }
+
+  // BB/hr estimate
+  const bbSessions = sessions.filter(s => s.stakes && s.stakes.includes('/'));
+  let bbhr = null;
+  if (bbSessions.length > 0 && totalHours > 0) {
+    const totalBB = bbSessions.reduce((sum, s) => {
+      const parts = s.stakes.split('/');
+      const bb = parseFloat(parts[1]) || 1;
+      return sum + (s.cashOut - s.buyIn) / bb;
+    }, 0);
+    const hours = bbSessions.reduce((s, x) => s + (x.duration || 0), 0);
+    if (hours > 0) bbhr = totalBB / hours;
+  }
+
+  const totalRake = sessions.reduce((s, x) => s + (x.rake || 0), 0);
+  const totalHands = sessions.reduce((s, x) => s + (x.hands || 0), 0);
+  const rakePerHour = totalHours > 0 ? totalRake / totalHours : 0;
+  const grossProfit = totalProfit + totalRake; // what you'd have won without rake
+
+  return { totalProfit, totalHours, totalBuyIn, wins, losses, winRate: (wins / sessions.length * 100).toFixed(1), hourly, avgSession, biggestWin, biggestLoss, streak, streakType, bbhr, count: sessions.length, roi: totalBuyIn > 0 ? (totalProfit / totalBuyIn * 100).toFixed(1) : 0, totalRake, totalHands, rakePerHour, grossProfit };
+}
+
+// ===== NAVIGATION =====
+function switchView(view) {
+  currentView = view;
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  const titles = { dashboard: 'Dashboard', sessions: 'Log Session', analytics: 'Analytics', live: 'Live Session', goals: 'Goals', leaks: 'Leak Finder' };
+  document.getElementById('topbar-title').textContent = titles[view] || view;
+  const content = document.getElementById('content');
+  content.innerHTML = '';
+  activeCharts.forEach(c => c.destroy()); activeCharts = [];
+  if (view === 'dashboard') renderDashboard(content);
+  else if (view === 'sessions') renderSessionsView(content);
+  else if (view === 'analytics') renderAnalyticsView(content);
+  else if (view === 'live') renderLiveView(content);
+  else if (view === 'goals') renderGoalsView(content);
+  else if (view === 'leaks') renderLeakFinderView(content);
+}
+
+function toggleLiveNav() { switchView('live'); }
+
+function updateLiveBadge() {
+  const live = getLive();
+  const badge = document.getElementById('live-toggle');
+  const label = document.getElementById('live-toggle-label');
+  if (live) {
+    badge.classList.add('active');
+    const elapsed = Math.floor((Date.now() - live.startTime) / 1000);
+    label.textContent = '● LIVE ' + fmtTimer(elapsed);
+  } else {
+    badge.classList.remove('active');
+    label.textContent = 'No Live Session';
+  }
+}
+
+function fmtTimer(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+}
+
+// ===== DASHBOARD =====
+function renderDashboard(container) {
+  const sessions = getSessions();
+  const stats = calcStats(sessions);
+  const goals = getGoals();
+  const bankroll = getBankroll();
+
+  const now = new Date();
+  const thisMonth = now.toISOString().slice(0,7);
+  const monthlySessions = sessions.filter(s => s.date && s.date.startsWith(thisMonth));
+  const monthlyStats = calcStats(monthlySessions);
+  const monthlyGoal = goals.monthly || 0;
+
+  // Hero
+  const tp = stats ? stats.totalProfit : 0;
+  const heroClass = tp >= 0 ? 'positive' : 'negative';
+
+  // Recent sessions
+  const recent = [...sessions].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
+
+  let streakHtml = '';
+  if (stats && stats.streak > 0) {
+    streakHtml = `<span class="streak-badge ${stats.streakType}">${stats.streakType === 'win' ? '🔥' : '❄️'} ${stats.streak}-${stats.streakType === 'win' ? 'Win' : 'Loss'} Streak</span>`;
+  }
+
+  container.innerHTML = `
+    <div class="hero-card">
+      <div class="hero-label">All-Time Net Profit</div>
+      <div class="hero-profit ${heroClass}">${fmt(tp)}</div>
+      <div class="hero-meta">
+        <div class="hero-meta-item">Sessions: <span>${sessions.length}</span></div>
+        <div class="hero-meta-item">Hours: <span>${stats ? stats.totalHours.toFixed(1) : 0}</span></div>
+        <div class="hero-meta-item">Win Rate: <span>${stats ? stats.winRate + '%' : '-'}</span></div>
+        <div class="hero-meta-item">Hourly: <span>${stats ? fmtHr(stats.hourly) : '-'}</span></div>
+        ${stats && stats.bbhr !== null ? `<div class="hero-meta-item">BB/hr: <span>${stats.bbhr.toFixed(1)}</span></div>` : ''}
+        ${streakHtml}
+      </div>
+    </div>
+
+    <div class="quick-stats">
+      <div class="stat-card green">
+        <div class="stat-label">This Month</div>
+        <div class="stat-value ${monthlyStats ? cls(monthlyStats.totalProfit) : ''}">${monthlyStats ? fmt(monthlyStats.totalProfit) : '$0'}</div>
+        <div class="stat-sub">${monthlySessions.length} sessions</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-label">Hourly Rate</div>
+        <div class="stat-value ${stats ? cls(stats.hourly) : ''}">${stats ? '$' + Math.abs(stats.hourly).toFixed(2) : '$0'}</div>
+        <div class="stat-sub">per hour</div>
+      </div>
+      <div class="stat-card gold">
+        <div class="stat-label">Biggest Win</div>
+        <div class="stat-value positive">${stats ? fmt(stats.biggestWin) : '$0'}</div>
+        <div class="stat-sub">single session</div>
+      </div>
+      <div class="stat-card purple">
+        <div class="stat-label">Bankroll</div>
+        <div class="stat-value neutral">$${bankroll.toLocaleString()}</div>
+        <div class="stat-sub">current</div>
+      </div>
+    </div>
+
+    <div class="dash-grid">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title-lg">Recent Sessions</div>
+          <button class="btn btn-primary btn-sm" onclick="switchView('sessions')">+ Add</button>
+        </div>
+        ${recent.length === 0 ? `<div class="empty-state"><div class="empty-icon">🃏</div><div class="empty-title">No sessions yet</div><div class="empty-sub">Log your first session to get started</div></div>` :
+          recent.map(s => {
+            const p = s.cashOut - s.buyIn;
+            return `<div class="recent-session">
+              <div class="recent-left">
+                <div class="recent-game">${s.gameType || 'Unknown'} ${s.stakes ? '(' + s.stakes + ')' : ''}</div>
+                <div class="recent-meta">${s.date} · ${s.location || 'Unknown'} · ${s.duration ? s.duration + 'h' : '-'}</div>
+              </div>
+              <div class="recent-profit ${cls(p)}">${fmt(p)}</div>
+            </div>`;
+          }).join('')}
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title-lg">Monthly Goal</div>
+          <button class="btn btn-secondary btn-sm" onclick="switchView('goals')">Edit</button>
+        </div>
+        ${monthlyGoal > 0 ? (() => {
+          const pct = Math.min(100, Math.max(0, (monthlyStats ? monthlyStats.totalProfit : 0) / monthlyGoal * 100));
+          const fill = monthlyStats && monthlyStats.totalProfit >= 0 ? 'var(--green)' : 'var(--red)';
+          return `
+            <div style="margin-bottom:1rem">
+              <div style="font-size:0.82rem;color:var(--text3);margin-bottom:0.5rem">Monthly Target: <strong style="color:var(--text)">${fmt(monthlyGoal,false)}</strong></div>
+              <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${fill}"></div></div>
+              <div class="goal-numbers"><span>${monthlyStats ? fmt(monthlyStats.totalProfit) : '$0'}</span><span>${pct.toFixed(0)}%</span></div>
+            </div>
+          `;
+        })() : `<div class="empty-state" style="padding:1.5rem"><div class="empty-sub">Set a monthly goal to track progress</div><button class="btn btn-gold btn-sm" style="margin-top:0.75rem" onclick="switchView('goals')">&#9733; Set Goal</button></div>`}
+
+        <div class="divider"></div>
+        <div class="card-header" style="margin-bottom:0.5rem">
+          <div class="card-title-lg">Yearly Overview</div>
+        </div>
+        ${(() => {
+          const yr = now.getFullYear().toString();
+          const yrSessions = sessions.filter(s => s.date && s.date.startsWith(yr));
+          const yrStats = calcStats(yrSessions);
+          return yrStats ? `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+              <div><div class="stat-label">Profit ${yr}</div><div class="stat-value ${cls(yrStats.totalProfit)}" style="font-size:1.2rem">${fmt(yrStats.totalProfit)}</div></div>
+              <div><div class="stat-label">Sessions</div><div class="stat-value neutral" style="font-size:1.2rem">${yrStats.count}</div></div>
+              <div><div class="stat-label">Win Rate</div><div class="stat-value neutral" style="font-size:1.2rem">${yrStats.winRate}%</div></div>
+              <div><div class="stat-label">Hours</div><div class="stat-value neutral" style="font-size:1.2rem">${yrStats.totalHours.toFixed(0)}</div></div>
+            </div>
+          ` : `<div class="empty-state" style="padding:1rem"><div class="empty-sub">No sessions this year</div></div>`;
+        })()}
+      </div>
+    </div>
+  `;
+}
+
+// ===== SESSIONS VIEW =====
+function renderSessionsView(container) {
+  const sessions = getSessions();
+  const locations = [...new Set(sessions.map(s => s.location).filter(Boolean))];
+  sessionMood = 3; sessionTags = [];
+
+  container.innerHTML = `
+    <div class="section-title">Log Session</div>
+    <div class="card" style="margin-bottom:1.25rem">
+      <div id="session-form-wrapper">${buildSessionForm(null, locations)}</div>
+    </div>
+
+    <div class="card">
+      <div class="table-header">
+        <div>
+          <div class="card-title-lg">Session History</div>
+          <div style="font-size:0.78rem;color:var(--text3);margin-top:0.2rem">${sessions.length} sessions recorded</div>
+        </div>
+        <div class="table-actions">
+          <input type="text" class="search-input" id="session-search" placeholder="&#128269; Search...">
+          <div id="csv-drop-zone" class="csv-drop-zone" title="Drag & drop a CSV file here or click to browse">
+            <span id="csv-drop-label">&#8593; Import CSV</span>
+            <input type="file" id="csv-input" accept=".csv,.zip" style="display:none">
+          </div>
+          <button class="btn btn-secondary btn-sm" id="bulk-btn" ${sessions.length === 0 ? 'disabled' : ''}>&#9745; Bulk Select</button>
+          <button class="btn btn-secondary btn-sm" id="export-btn" ${sessions.length === 0 ? 'disabled' : ''}>&#8595; Export CSV</button>
+          <button class="btn btn-danger btn-sm" id="clear-btn" ${sessions.length === 0 ? 'disabled' : ''}>&#128465; Clear All</button>
+        </div>
+      </div>
+      <div id="bulk-toolbar" style="display:none" class="bulk-toolbar">
+        <div class="bulk-filters">
+          <span style="font-size:0.82rem;color:var(--text2);font-weight:500">Quick select:</span>
+          <button class="btn btn-secondary btn-xs" data-bulk-filter="year-2026">2026</button>
+          <button class="btn btn-secondary btn-xs" data-bulk-filter="year-2025">2025</button>
+          <button class="btn btn-secondary btn-xs" data-bulk-filter="year-2024">2024</button>
+          <button class="btn btn-secondary btn-xs" data-bulk-filter="online">Online</button>
+          <button class="btn btn-secondary btn-xs" data-bulk-filter="all">All</button>
+          <button class="btn btn-secondary btn-xs" data-bulk-filter="none">None</button>
+          <input type="date" id="bulk-from" title="From date" style="padding:0.25rem 0.5rem;font-size:0.78rem;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px">
+          <span style="font-size:0.78rem;color:var(--text3)">→</span>
+          <input type="date" id="bulk-to" title="To date" style="padding:0.25rem 0.5rem;font-size:0.78rem;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px">
+          <button class="btn btn-secondary btn-xs" id="bulk-date-select">Select Range</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem">
+          <span class="bulk-count" id="bulk-count">0 selected</span>
+          <button class="btn btn-danger btn-sm" id="bulk-delete-btn" disabled>&#128465; Delete Selected</button>
+          <button class="btn btn-secondary btn-xs" id="bulk-cancel">Cancel</button>
+        </div>
+      </div>
+      <div id="sessions-table-wrapper">${sessions.length === 0 ? renderEmptyState() : renderTable(sessions)}</div>
+    </div>
+  `;
+
+  bindSessionEvents(container);
+}
+
+function buildSessionForm(session, locations) {
+  const isEdit = !!session;
+  const today = new Date().toISOString().slice(0,10);
+  const locs = locations || [...new Set(getSessions().map(s => s.location).filter(Boolean))];
+  const moodEmojis = ['😴','😐','🙂','😊','🔥'];
+  const m = session ? (session.mood || 3) : 3;
+  const t = session ? (session.tags ? session.tags.split(',').filter(Boolean) : []) : [];
+
+  return `
+    <form id="session-form">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" id="f-date" required value="${session ? session.date : today}">
+        </div>
+        <div class="form-group">
+          <label>Location</label>
+          <input type="text" id="f-location" list="loc-list" placeholder="Casino / Home game" value="${session ? session.location || '' : ''}">
+          <datalist id="loc-list">${locs.map(l => `<option value="${l}">`).join('')}</datalist>
+        </div>
+        <div class="form-group">
+          <label>Game Type</label>
+          <input type="text" id="f-gameType" list="game-list" placeholder="NL Hold'em" value="${session ? session.gameType || '' : ''}">
+          <datalist id="game-list">${GAME_TYPES.map(g => `<option value="${g}">`).join('')}</datalist>
+        </div>
+        <div class="form-group">
+          <label>Stakes</label>
+          <input type="text" id="f-stakes" list="stakes-list" placeholder="1/2, 2/5..." value="${session ? session.stakes || '' : ''}">
+          <datalist id="stakes-list">${STAKES_LIST.map(s => `<option value="${s}">`).join('')}</datalist>
+        </div>
+        <div class="form-group">
+          <label>Buy-in ($)</label>
+          <input type="number" id="f-buyIn" required min="0" step="1" placeholder="200" value="${session ? session.buyIn : ''}">
+        </div>
+        <div class="form-group">
+          <label>Cash-out ($)</label>
+          <input type="number" id="f-cashOut" required min="0" step="1" placeholder="350" value="${session ? session.cashOut : ''}">
+        </div>
+        <div class="form-group">
+          <label>Duration (hours)</label>
+          <input type="number" id="f-duration" min="0" step="0.25" placeholder="4" value="${session ? session.duration || '' : ''}">
+        </div>
+        <div class="form-group">
+          <label>Table Size</label>
+          <select id="f-tableSize">
+            ${['','2','3','4','5','6','7','8','9','10'].map(v => `<option value="${v}" ${session && session.tableSize === v ? 'selected' : ''}>${v || 'Select...'}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group span2">
+          <label>Mental State</label>
+          <div class="mood-row" id="mood-row">
+            ${moodEmojis.map((e, i) => `<button type="button" class="mood-btn ${(m === i+1) ? 'selected' : ''}" data-mood="${i+1}" title="${['Tired','Neutral','Good','Great','On Fire'][i]}">${e}</button>`).join('')}
+          </div>
+        </div>
+        <div class="form-group full">
+          <label>Tags</label>
+          <div class="tags-row" id="tags-row">
+            ${TAGS.map(tag => `<button type="button" class="tag-chip ${t.includes(tag) ? 'selected' : ''}" data-tag="${tag}">${tag}</button>`).join('')}
+          </div>
+        </div>
+        <div class="form-group full">
+          <label>Notes</label>
+          <textarea id="f-notes" rows="2" placeholder="Key hands, reads, observations...">${session ? session.notes || '' : ''}</textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary" id="submit-btn">${isEdit ? '&#10003; Update Session' : '+ Add Session'}</button>
+        ${isEdit ? `<button type="button" class="btn btn-secondary" id="cancel-btn">Cancel</button>` : ''}
+      </div>
+    </form>
+  `;
+}
+
+function renderEmptyState() {
+  return `<div class="empty-state"><div class="empty-icon">🃏</div><div class="empty-title">No sessions yet</div><div class="empty-sub">Log your first session using the form above</div></div>`;
+}
+
+function renderTable(sessions, search = '') {
+  let filtered = sessions;
+  if (search) {
+    const q = search.toLowerCase();
+    filtered = sessions.filter(s => (s.date||'').includes(q) || (s.location||'').toLowerCase().includes(q) || (s.gameType||'').toLowerCase().includes(q) || (s.stakes||'').includes(q) || (s.notes||'').toLowerCase().includes(q));
+  }
+
+  const sorted = [...filtered].sort((a, b) => {
+    let va = a[sortCol], vb = b[sortCol];
+    if (sortCol === 'profit') { va = a.cashOut - a.buyIn; vb = b.cashOut - b.buyIn; }
+    if (sortCol === 'hourly') { va = a.duration > 0 ? (a.cashOut - a.buyIn) / a.duration : 0; vb = b.duration > 0 ? (b.cashOut - b.buyIn) / b.duration : 0; }
+    if (typeof va === 'number' && typeof vb === 'number') return sortAsc ? va - vb : vb - va;
+    return sortAsc ? String(va||'').localeCompare(String(vb||'')) : String(vb||'').localeCompare(String(va||''));
+  });
+
+  const cols = [
+    { key: 'date', label: 'Date' }, { key: 'location', label: 'Location' },
+    { key: 'gameType', label: 'Game' }, { key: 'stakes', label: 'Stakes' },
+    { key: 'buyIn', label: 'Buy-in' }, { key: 'cashOut', label: 'Cash-out' },
+    { key: 'profit', label: 'Profit' }, { key: 'duration', label: 'Hours' },
+    { key: 'hourly', label: '$/hr' },
+  ];
+  const arrow = k => sortCol === k ? (sortAsc ? ' ▲' : ' ▼') : '';
+
+  if (sorted.length === 0) return `<div class="empty-state" style="padding:2rem"><div class="empty-sub">No sessions match your search</div></div>`;
+
+  let html = `<div class="table-wrapper"><table><thead><tr>`;
+  if (bulkMode) html += `<th><input type="checkbox" id="bulk-check-all" title="Select all visible"></th>`;
+  cols.forEach(c => { html += `<th class="sortable" data-sort="${c.key}">${c.label}${arrow(c.key)}</th>`; });
+  html += `<th>Mood</th><th>Notes</th>${bulkMode ? '' : '<th></th>'}</tr></thead><tbody>`;
+
+  sorted.forEach(s => {
+    const p = s.cashOut - s.buyIn;
+    const hr = s.duration > 0 ? p / s.duration : null;
+    const checked = selectedIds.has(s.id) ? 'checked' : '';
+    const rowStyle = selectedIds.has(s.id) ? 'background:rgba(244,63,94,0.07)' : '';
+    html += `<tr style="${rowStyle}">
+      ${bulkMode ? `<td><input type="checkbox" class="bulk-checkbox" data-id="${s.id}" ${checked}></td>` : ''}
+      <td>${s.date}</td>
+      <td>${s.location || '<span style="color:var(--text3)">-</span>'}</td>
+      <td>${s.gameType || '<span style="color:var(--text3)">-</span>'}</td>
+      <td>${s.stakes ? `<span class="badge badge-blue">${s.stakes}</span>` : '<span style="color:var(--text3)">-</span>'}</td>
+      <td>€${s.buyIn.toLocaleString()}</td>
+      <td>€${s.cashOut.toLocaleString()}</td>
+      <td>${pill(p)}</td>
+      <td>${s.duration || '<span style="color:var(--text3)">-</span>'}</td>
+      <td class="${cls(hr)}">${hr !== null ? fmtHr(hr) : '<span style="color:var(--text3)">-</span>'}</td>
+      <td>${s.mood ? moodEmoji(s.mood) : ''}</td>
+      <td class="notes-cell" title="${(s.notes||'').replace(/"/g,'&quot;')}">${s.notes || '<span style="color:var(--text3)">-</span>'}</td>
+      ${bulkMode ? '' : `<td class="action-cell">
+        <button class="btn-icon edit-btn" data-id="${s.id}" title="Edit">&#9998;</button>
+        <button class="btn-icon delete-btn" data-id="${s.id}" title="Delete">&#10005;</button>
+      </td>`}
+    </tr>`;
+  });
+
+  html += `</tbody></table></div>`;
+  return html;
+}
+
+function bindSessionEvents(container) {
+  const wrapper = container.querySelector('#session-form-wrapper');
+  sessionMood = 3; sessionTags = [];
+
+  function setupFormEvents() {
+    const form = container.querySelector('#session-form');
+    if (!form) return;
+
+    // Mood
+    container.querySelectorAll('.mood-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        sessionMood = parseInt(btn.dataset.mood);
+        container.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+      });
+    });
+
+    // Tags
+    container.querySelectorAll('.tag-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        chip.classList.toggle('selected');
+        const tag = chip.dataset.tag;
+        if (chip.classList.contains('selected')) sessionTags.push(tag);
+        else sessionTags = sessionTags.filter(t => t !== tag);
+      });
+    });
+
+    // Existing tags from edit
+    sessionTags = [...container.querySelectorAll('.tag-chip.selected')].map(c => c.dataset.tag);
+    const moodSel = container.querySelector('.mood-btn.selected');
+    if (moodSel) sessionMood = parseInt(moodSel.dataset.mood);
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const data = {
+        date: form.querySelector('#f-date').value,
+        location: form.querySelector('#f-location').value.trim(),
+        gameType: form.querySelector('#f-gameType').value.trim(),
+        stakes: form.querySelector('#f-stakes').value.trim(),
+        buyIn: parseFloat(form.querySelector('#f-buyIn').value) || 0,
+        cashOut: parseFloat(form.querySelector('#f-cashOut').value) || 0,
+        duration: parseFloat(form.querySelector('#f-duration').value) || 0,
+        tableSize: form.querySelector('#f-tableSize').value,
+        mood: sessionMood,
+        tags: sessionTags.join(','),
+        notes: form.querySelector('#f-notes').value.trim(),
+      };
+      if (editingId) { updateSession(editingId, data); editingId = null; }
+      else { addSession(data); }
+      renderSessionsView(container);
+    });
+
+    const cancelBtn = form.querySelector('#cancel-btn');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => { editingId = null; renderSessionsView(container); });
+    }
+  }
+
+  setupFormEvents();
+
+  // Search
+  container.querySelector('#session-search').addEventListener('input', (e) => {
+    container.querySelector('#sessions-table-wrapper').innerHTML = renderTable(getSessions(), e.target.value);
+    bindTableEvents(container);
+  });
+
+  function bindTableEvents(c) {
+    c.querySelectorAll('.sortable').forEach(th => {
+      th.addEventListener('click', () => {
+        const key = th.dataset.sort;
+        if (sortCol === key) sortAsc = !sortAsc;
+        else { sortCol = key; sortAsc = false; }
+        const search = c.querySelector('#session-search')?.value || '';
+        c.querySelector('#sessions-table-wrapper').innerHTML = renderTable(getSessions(), search);
+        bindTableEvents(c);
+      });
+    });
+
+    c.querySelectorAll('.edit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const session = getSessions().find(s => s.id === btn.dataset.id);
+        if (!session) return;
+        editingId = session.id;
+        const locs = [...new Set(getSessions().map(s => s.location).filter(Boolean))];
+        wrapper.innerHTML = buildSessionForm(session, locs);
+        setupFormEvents();
+        wrapper.scrollIntoView({ behavior: 'smooth' });
+      });
+    });
+
+    c.querySelectorAll('.delete-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (confirm('Delete this session?')) { deleteSession(btn.dataset.id); renderSessionsView(c); }
+      });
+    });
+  }
+
+  bindTableEvents(container);
+
+  async function handleImportFile(file) {
+    if (!file) return;
+    try {
+      let csvFile = file;
+
+      const isZip = file.name.endsWith('.zip') || file.type === 'application/zip' || file.type === 'application/x-zip-compressed';
+
+      if (isZip) {
+        const zip = await JSZip.loadAsync(file);
+        const entries = Object.values(zip.files).filter(f => !f.dir);
+
+        const xmlEntries = entries.filter(f => f.name.endsWith('.xml'));
+        const csvEntry = entries.find(f => f.name.endsWith('.csv'));
+
+        if (xmlEntries.length > 0) {
+          // Parse XML hand history files (Winamax / similar format)
+          const sessions = await parseXMLSessions(zip, xmlEntries);
+          if (sessions.length === 0) { alert('Could not parse any sessions from the XML files.'); return; }
+          const store = getSessions();
+          sessions.forEach(s => { s.id = crypto.randomUUID(); store.push(s); });
+          saveSessions(store);
+          alert('Imported ' + sessions.length + ' sessions from ' + xmlEntries.length + ' hand history files.');
+          renderSessionsView(container);
+          return;
+        } else if (csvEntry) {
+          const csvText = await csvEntry.async('string');
+          csvFile = new File([csvText], csvEntry.name, { type: 'text/csv' });
+        } else {
+          alert('No supported files found in the zip (expected .xml or .csv).');
+          return;
+        }
+      }
+
+      const { sessions, errors } = await importCSV(csvFile);
+      if (errors.length > 0) alert('Warnings:\n' + errors.join('\n'));
+      const store = getSessions();
+      sessions.forEach(s => { s.id = crypto.randomUUID(); store.push(s); });
+      saveSessions(store);
+      alert('Imported ' + sessions.length + ' sessions');
+      renderSessionsView(container);
+    } catch (err) { alert('Import failed: ' + err.message); }
+  }
+
+  const dropZone = container.querySelector('#csv-drop-zone');
+  const dropLabel = container.querySelector('#csv-drop-label');
+  const csvInput = container.querySelector('#csv-input');
+
+  dropZone.addEventListener('click', () => csvInput.click());
+  csvInput.addEventListener('change', (e) => handleImportFile(e.target.files[0]));
+
+  dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); dropLabel.textContent = '📂 Drop here'; });
+  dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('drag-over'); dropLabel.textContent = '⬆ Import CSV'; });
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    dropLabel.textContent = '⬆ Import CSV';
+    handleImportFile(e.dataTransfer.files[0]);
+  });
+  container.querySelector('#export-btn').addEventListener('click', () => exportToCSV(getSessions()));
+  container.querySelector('#clear-btn').addEventListener('click', () => {
+    if (confirm('Delete ALL sessions? This cannot be undone.')) { clearAll(); renderSessionsView(container); }
+  });
+
+  // ── Bulk select ──────────────────────────────────────────────
+  function updateBulkCount() {
+    const countEl = container.querySelector('#bulk-count');
+    const deleteBtn = container.querySelector('#bulk-delete-btn');
+    if (countEl) countEl.textContent = selectedIds.size + ' selected';
+    if (deleteBtn) deleteBtn.disabled = selectedIds.size === 0;
+  }
+
+  function refreshTableBulk() {
+    const search = container.querySelector('#session-search')?.value || '';
+    container.querySelector('#sessions-table-wrapper').innerHTML = renderTable(getSessions(), search);
+    bindTableEvents(container);
+    bindBulkCheckboxes();
+    updateBulkCount();
+  }
+
+  function selectByFilter(filter) {
+    const all = getSessions();
+    selectedIds.clear();
+    all.forEach(s => {
+      if (filter === 'all') selectedIds.add(s.id);
+      else if (filter === 'none') { /* clear */ }
+      else if (filter.startsWith('year-')) { if (s.date && s.date.startsWith(filter.slice(5))) selectedIds.add(s.id); }
+      else if (filter === 'online') { if ((s.location || '').toLowerCase() === 'online') selectedIds.add(s.id); }
+    });
+    refreshTableBulk();
+  }
+
+  function bindBulkCheckboxes() {
+    const checkAll = container.querySelector('#bulk-check-all');
+    if (checkAll) {
+      checkAll.checked = false;
+      checkAll.addEventListener('change', () => {
+        container.querySelectorAll('.bulk-checkbox').forEach(cb => {
+          cb.checked = checkAll.checked;
+          if (checkAll.checked) selectedIds.add(cb.dataset.id);
+          else selectedIds.delete(cb.dataset.id);
+        });
+        updateBulkCount();
+      });
+    }
+    container.querySelectorAll('.bulk-checkbox').forEach(cb => {
+      cb.addEventListener('change', () => {
+        if (cb.checked) selectedIds.add(cb.dataset.id);
+        else selectedIds.delete(cb.dataset.id);
+        updateBulkCount();
+      });
+    });
+  }
+
+  container.querySelector('#bulk-btn').addEventListener('click', () => {
+    bulkMode = true;
+    selectedIds.clear();
+    container.querySelector('#bulk-toolbar').style.display = 'flex';
+    container.querySelector('#bulk-btn').style.display = 'none';
+    refreshTableBulk();
+  });
+
+  container.querySelector('#bulk-cancel').addEventListener('click', () => {
+    bulkMode = false;
+    selectedIds.clear();
+    container.querySelector('#bulk-toolbar').style.display = 'none';
+    container.querySelector('#bulk-btn').style.display = '';
+    refreshTableBulk();
+  });
+
+  container.querySelectorAll('[data-bulk-filter]').forEach(btn => {
+    btn.addEventListener('click', () => selectByFilter(btn.dataset.bulkFilter));
+  });
+
+  container.querySelector('#bulk-date-select').addEventListener('click', () => {
+    const from = container.querySelector('#bulk-from').value;
+    const to   = container.querySelector('#bulk-to').value;
+    if (!from && !to) { alert('Pick at least one date.'); return; }
+    selectedIds.clear();
+    getSessions().forEach(s => {
+      if ((!from || s.date >= from) && (!to || s.date <= to)) selectedIds.add(s.id);
+    });
+    refreshTableBulk();
+  });
+
+  container.querySelector('#bulk-delete-btn').addEventListener('click', () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Delete ${selectedIds.size} selected sessions? This cannot be undone.`)) return;
+    const remaining = getSessions().filter(s => !selectedIds.has(s.id));
+    saveSessions(remaining);
+    bulkMode = false;
+    selectedIds.clear();
+    renderSessionsView(container);
+  });
+}
+
+// ===== ANALYTICS =====
+function renderAnalyticsView(container) {
+  const sessions = getSessions();
+
+  container.innerHTML = `
+    <div class="filters-bar">
+      <div class="filter-group"><label>From</label><input type="date" id="f-from"></div>
+      <div class="filter-group"><label>To</label><input type="date" id="f-to"></div>
+      <div class="filter-group"><label>Location</label>
+        <select id="f-loc"><option value="">All</option>${[...new Set(sessions.map(s=>s.location).filter(Boolean))].map(l=>`<option value="${l}">${l}</option>`).join('')}</select>
+      </div>
+      <div class="filter-group"><label>Game</label>
+        <select id="f-game"><option value="">All</option>${[...new Set(sessions.map(s=>s.gameType).filter(Boolean))].map(g=>`<option value="${g}">${g}</option>`).join('')}</select>
+      </div>
+      <div class="filter-group"><label>Stakes</label>
+        <select id="f-stakes"><option value="">All</option>${[...new Set(sessions.map(s=>s.stakes).filter(Boolean))].map(s=>`<option value="${s}">${s}</option>`).join('')}</select>
+      </div>
+      <button class="btn btn-secondary btn-sm" id="reset-filters">Reset</button>
+    </div>
+
+    <div class="stats-grid" id="stats-grid" style="margin-bottom:1.25rem"></div>
+
+    <div class="charts-grid">
+      <div class="chart-card full"><h3>&#128200; Cumulative Profit</h3><canvas id="ch-cum"></canvas></div>
+      <div class="chart-card"><h3>&#128197; Monthly Results</h3><canvas id="ch-monthly"></canvas></div>
+      <div class="chart-card"><h3>&#128203; Session Distribution</h3><canvas id="ch-dist"></canvas></div>
+      <div class="chart-card"><h3>&#128205; Profit by Location</h3><canvas id="ch-loc"></canvas></div>
+      <div class="chart-card"><h3>&#127183; Profit by Game Type</h3><canvas id="ch-game"></canvas></div>
+      <div class="chart-card"><h3>&#128197; Day of Week</h3><canvas id="ch-dow"></canvas></div>
+      <div class="chart-card"><h3>&#9200; Session Length vs Profit</h3><canvas id="ch-scatter"></canvas></div>
+      <div class="chart-card"><h3>&#128200; Hourly Rate Trend</h3><canvas id="ch-hrtrend"></canvas></div>
+      <div class="chart-card"><h3>&#127968; Rake Paid per Session</h3><canvas id="ch-rake"></canvas></div>
+      <div class="chart-card full"><h3>&#128200; Gross vs Net Profit (Rake Impact)</h3><canvas id="ch-gross-net"></canvas></div>
+    </div>
+  `;
+
+  const apply = () => {
+    const from = container.querySelector('#f-from').value;
+    const to = container.querySelector('#f-to').value;
+    const loc = container.querySelector('#f-loc').value;
+    const game = container.querySelector('#f-game').value;
+    const stakes = container.querySelector('#f-stakes').value;
+    let f = sessions;
+    if (from) f = f.filter(s => s.date >= from);
+    if (to) f = f.filter(s => s.date <= to);
+    if (loc) f = f.filter(s => s.location === loc);
+    if (game) f = f.filter(s => s.gameType === game);
+    if (stakes) f = f.filter(s => s.stakes === stakes);
+    renderAnalyticsStats(container.querySelector('#stats-grid'), f);
+    renderAllCharts(container, f);
+  };
+
+  container.querySelectorAll('.filters-bar input, .filters-bar select').forEach(el => el.addEventListener('change', apply));
+  container.querySelector('#reset-filters').addEventListener('click', () => {
+    ['#f-from','#f-to','#f-loc','#f-game','#f-stakes'].forEach(id => { const el = container.querySelector(id); if (el) el.value = ''; });
+    apply();
+  });
+  apply();
+}
+
+function renderAnalyticsStats(el, sessions) {
+  if (!sessions.length) { el.innerHTML = `<div class="empty-state"><div class="empty-sub">No sessions match the selected filters</div></div>`; return; }
+  const s = calcStats(sessions);
+
+  el.innerHTML = `
+    ${statCard('Total Profit', fmt(s.totalProfit), cls(s.totalProfit), '&#128176;', 'green', s.count + ' sessions')}
+    ${statCard('Win Rate', s.winRate + '%', '', '&#127942;', 'gold', s.wins + 'W / ' + s.losses + 'L')}
+    ${statCard('Hourly Rate', fmtHr(s.hourly), cls(s.hourly), '&#9200;', 'blue', s.totalHours.toFixed(1) + ' hours')}
+    ${statCard('Avg Session', fmt(s.avgSession), cls(s.avgSession), '&#128201;', s.avgSession >= 0 ? 'green' : 'red', 'per session')}
+    ${statCard('Biggest Win', fmt(s.biggestWin), 'positive', '&#127881;', 'green', 'best session')}
+    ${statCard('Biggest Loss', fmt(s.biggestLoss), 'negative', '&#128546;', 'red', 'worst session')}
+    ${statCard('Total Invested', '$' + s.totalBuyIn.toLocaleString(), 'neutral', '&#128180;', 'purple', 'total buy-ins')}
+    ${statCard('ROI', s.roi + '%', cls(parseFloat(s.roi)), '&#128200;', parseFloat(s.roi) >= 0 ? 'green' : 'red', 'return on investment')}
+    ${s.bbhr !== null ? statCard('BB/hr', s.bbhr.toFixed(1), cls(s.bbhr), '&#127183;', 'blue', 'big blinds / hour') : ''}
+    ${statCard('Streak', s.streak > 0 ? s.streak + '-' + (s.streakType === 'win' ? 'Win 🔥' : 'Loss ❄️') : '-', s.streakType === 'win' ? 'positive' : s.streakType === 'loss' ? 'negative' : '', '&#9889;', s.streakType === 'win' ? 'green' : 'red', 'current streak')}
+    ${statCard('Total Rake Paid', '€' + s.totalRake.toFixed(2), 'negative', '&#127968;', 'red', s.totalHands > 0 ? s.totalHands + ' hands' : 'all sessions')}
+    ${statCard('Rake / Hour', '€' + s.rakePerHour.toFixed(2) + '/hr', 'negative', '&#9201;', 'red', 'cost of playing')}
+    ${statCard('Gross Profit', fmt(s.grossProfit), cls(s.grossProfit), '&#128173;', s.grossProfit >= 0 ? 'green' : 'red', 'before rake')}
+  `;
+}
+
+function statCard(label, value, valClass, icon, colorClass, sub) {
+  return `<div class="stat-card ${colorClass}">
+    <div class="stat-icon">${icon}</div>
+    <div class="stat-label">${label}</div>
+    <div class="stat-value ${valClass}">${value}</div>
+    <div class="stat-sub">${sub}</div>
+  </div>`;
+}
+
+function renderAllCharts(container, sessions) {
+  activeCharts.forEach(c => c.destroy()); activeCharts = [];
+  if (!sessions.length) return;
+
+  const sorted = [...sessions].sort((a, b) => a.date.localeCompare(b.date));
+  const gridOpts = { color: 'rgba(255,255,255,0.05)' };
+  const tickOpts = { color: '#64748b', font: { size: 11 } };
+  const chartDefaults = {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      y: { grid: gridOpts, ticks: { ...tickOpts, callback: v => '$' + v.toLocaleString() } },
+      x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: tickOpts }
+    }
+  };
+
+  // 1. Cumulative Profit
+  let cum = 0;
+  const cumPts = sorted.map(s => { cum += s.cashOut - s.buyIn; return cum; });
+  const cumColors = cumPts.map(v => v >= 0 ? 'rgba(0,212,170,0.15)' : 'rgba(244,63,94,0.15)');
+  activeCharts.push(new Chart(container.querySelector('#ch-cum'), {
+    type: 'line',
+    data: {
+      labels: sorted.map(s => s.date),
+      datasets: [
+        { label: 'Cumulative', data: cumPts, borderColor: cumPts[cumPts.length-1] >= 0 ? '#00d4aa' : '#f43f5e', backgroundColor: cumPts[cumPts.length-1] >= 0 ? 'rgba(0,212,170,0.08)' : 'rgba(244,63,94,0.08)', fill: true, tension: 0.3, pointRadius: sorted.length < 30 ? 3 : 0, borderWidth: 2 },
+        { label: 'Zero line', data: sorted.map(() => 0), borderColor: 'rgba(255,255,255,0.1)', borderDash: [4,4], borderWidth: 1, pointRadius: 0, tension: 0 }
+      ]
+    },
+    options: { ...chartDefaults, plugins: { legend: { display: false } } }
+  }));
+
+  // 2. Monthly
+  const monthly = {};
+  sorted.forEach(s => { const m = s.date.slice(0,7); monthly[m] = (monthly[m]||0) + (s.cashOut - s.buyIn); });
+  const mL = Object.keys(monthly), mV = Object.values(monthly);
+  activeCharts.push(new Chart(container.querySelector('#ch-monthly'), {
+    type: 'bar',
+    data: { labels: mL, datasets: [{ data: mV, backgroundColor: mV.map(v => v >= 0 ? 'rgba(0,212,170,0.6)' : 'rgba(244,63,94,0.6)'), borderColor: mV.map(v => v >= 0 ? '#00d4aa' : '#f43f5e'), borderWidth: 1, borderRadius: 4 }] },
+    options: chartDefaults
+  }));
+
+  // 3. Distribution
+  const profits = sessions.map(s => s.cashOut - s.buyIn);
+  const mn = Math.min(...profits), mx = Math.max(...profits);
+  const bSz = Math.max(50, Math.ceil((mx - mn || 1) / 10 / 50) * 50);
+  const bStart = Math.floor(mn / bSz) * bSz;
+  const buckets = {};
+  for (let b = bStart; b <= mx; b += bSz) buckets[b] = 0;
+  profits.forEach(p => { const b = Math.floor(p / bSz) * bSz; buckets[b] = (buckets[b]||0) + 1; });
+  const dL = Object.keys(buckets).map(Number).sort((a,b)=>a-b);
+  activeCharts.push(new Chart(container.querySelector('#ch-dist'), {
+    type: 'bar',
+    data: { labels: dL.map(b => '$'+b+'→'), datasets: [{ data: dL.map(b => buckets[b]), backgroundColor: dL.map(b => b >= 0 ? 'rgba(0,212,170,0.6)' : 'rgba(244,63,94,0.6)'), borderRadius: 4 }] },
+    options: { ...chartDefaults, scales: { y: { ...chartDefaults.scales.y, ticks: { ...tickOpts, stepSize: 1, callback: v => v } }, x: chartDefaults.scales.x } }
+  }));
+
+  // 4. By Location
+  const byLoc = {};
+  sessions.forEach(s => { const l = s.location||'Unknown'; byLoc[l] = (byLoc[l]||0) + (s.cashOut - s.buyIn); });
+  const lL = Object.keys(byLoc), lV = Object.values(byLoc);
+  activeCharts.push(new Chart(container.querySelector('#ch-loc'), {
+    type: 'bar',
+    data: { labels: lL, datasets: [{ data: lV, backgroundColor: lV.map(v => v >= 0 ? 'rgba(0,212,170,0.6)' : 'rgba(244,63,94,0.6)'), borderRadius: 4 }] },
+    options: { ...chartDefaults, indexAxis: 'y' }
+  }));
+
+  // 5. By Game Type (doughnut)
+  const byGame = {};
+  sessions.forEach(s => { const g = s.gameType||'Unknown'; byGame[g] = (byGame[g]||0) + (s.cashOut - s.buyIn); });
+  const gL = Object.keys(byGame), gV = Object.values(byGame);
+  const colors = ['#00d4aa','#3b82f6','#f59e0b','#f43f5e','#8b5cf6','#ec4899','#14b8a6','#f97316','#6366f1','#84cc16'];
+  activeCharts.push(new Chart(container.querySelector('#ch-game'), {
+    type: 'doughnut',
+    data: { labels: gL, datasets: [{ data: gV.map(Math.abs), backgroundColor: colors, borderWidth: 0, hoverOffset: 8 }] },
+    options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: '#64748b', padding: 12, font: { size: 11 } } }, tooltip: { callbacks: { label: ctx => ctx.label + ': ' + fmt(gV[ctx.dataIndex]) } } } }
+  }));
+
+  // 6. Day of Week
+  const dows = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const dowTotals = Array(7).fill(0), dowCounts = Array(7).fill(0);
+  sessions.forEach(s => { const d = new Date(s.date).getDay(); dowTotals[d] += s.cashOut - s.buyIn; dowCounts[d]++; });
+  const dowAvg = dowTotals.map((t, i) => dowCounts[i] > 0 ? t / dowCounts[i] : 0);
+  activeCharts.push(new Chart(container.querySelector('#ch-dow'), {
+    type: 'bar',
+    data: { labels: dows, datasets: [{ data: dowAvg, backgroundColor: dowAvg.map(v => v >= 0 ? 'rgba(0,212,170,0.6)' : 'rgba(244,63,94,0.6)'), borderRadius: 4, label: 'Avg Profit' }] },
+    options: chartDefaults
+  }));
+
+  // 7. Scatter: Duration vs Profit
+  const scatterData = sessions.filter(s => s.duration > 0).map(s => ({ x: s.duration, y: s.cashOut - s.buyIn }));
+  activeCharts.push(new Chart(container.querySelector('#ch-scatter'), {
+    type: 'scatter',
+    data: { datasets: [{ data: scatterData, backgroundColor: scatterData.map(p => p.y >= 0 ? 'rgba(0,212,170,0.6)' : 'rgba(244,63,94,0.6)'), pointRadius: 5 }] },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { title: { display: true, text: 'Hours', color: '#64748b' }, grid: gridOpts, ticks: tickOpts }, y: { title: { display: true, text: 'Profit ($)', color: '#64748b' }, ticks: { ...tickOpts, callback: v => '$'+v.toLocaleString() }, grid: gridOpts } } }
+  }));
+
+  // 8. Hourly Rate Trend (rolling avg)
+  const withHours = sorted.filter(s => s.duration > 0);
+  const window = Math.max(3, Math.min(10, Math.floor(withHours.length / 4)));
+  const hrTrend = withHours.map((s, i) => {
+    if (i < window - 1) return null;
+    const slice = withHours.slice(i - window + 1, i + 1);
+    const tp = slice.reduce((sum, x) => sum + (x.cashOut - x.buyIn), 0);
+    const th = slice.reduce((sum, x) => sum + (x.duration || 0), 0);
+    return th > 0 ? tp / th : null;
+  }).filter(v => v !== null);
+  const hrLabels = withHours.slice(window - 1).map(s => s.date);
+  activeCharts.push(new Chart(container.querySelector('#ch-hrtrend'), {
+    type: 'line',
+    data: {
+      labels: hrLabels,
+      datasets: [
+        { data: hrTrend, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.08)', fill: true, tension: 0.3, pointRadius: 2, borderWidth: 2, label: window+'-session rolling avg' },
+        { data: hrLabels.map(() => 0), borderColor: 'rgba(255,255,255,0.08)', borderDash: [4,4], borderWidth: 1, pointRadius: 0 }
+      ]
+    },
+    options: chartDefaults
+  }));
+
+  // Rake per session (only sessions with rake data)
+  const rakeSessions = sorted.filter(s => s.rake > 0);
+  if (rakeSessions.length > 0) {
+    activeCharts.push(new Chart(container.querySelector('#ch-rake'), {
+      type: 'bar',
+      data: {
+        labels: rakeSessions.map(s => s.date),
+        datasets: [{
+          data: rakeSessions.map(s => s.rake),
+          backgroundColor: 'rgba(244,63,94,0.55)',
+          borderColor: '#f43f5e',
+          borderWidth: 1,
+          borderRadius: 4,
+          label: 'Rake'
+        }]
+      },
+      options: {
+        ...chartDefaults,
+        scales: {
+          y: { grid: gridOpts, ticks: { ...tickOpts, callback: v => '€' + v.toFixed(2) } },
+          x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: tickOpts }
+        }
+      }
+    }));
+
+    // Gross vs Net cumulative
+    let cumNet = 0, cumGross = 0;
+    const gnLabels = sorted.map(s => s.date);
+    const netLine = sorted.map(s => { cumNet += s.cashOut - s.buyIn; return cumNet; });
+    const grossLine = sorted.map(s => { cumGross += (s.cashOut - s.buyIn) + (s.rake || 0); return cumGross; });
+
+    activeCharts.push(new Chart(container.querySelector('#ch-gross-net'), {
+      type: 'line',
+      data: {
+        labels: gnLabels,
+        datasets: [
+          { label: 'Net Profit (after rake)', data: netLine, borderColor: '#00d4aa', backgroundColor: 'rgba(0,212,170,0.07)', fill: true, tension: 0.3, pointRadius: sorted.length < 30 ? 3 : 0, borderWidth: 2 },
+          { label: 'Gross Profit (before rake)', data: grossLine, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.05)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2, borderDash: [6,3] }
+        ]
+      },
+      options: {
+        ...chartDefaults,
+        plugins: { legend: { display: true, labels: { color: '#64748b', font: { size: 11 } } } }
+      }
+    }));
+  }
+}
+
+// ===== LIVE SESSION =====
+function renderLiveView(container) {
+  const live = getLive();
+
+  container.innerHTML = `
+    <div class="live-layout">
+      <div class="live-timer-card">
+        <div class="timer-label">${live ? '● LIVE SESSION IN PROGRESS' : 'START A NEW SESSION'}</div>
+        <div class="timer-display" id="timer-display">${live ? fmtTimer(Math.floor((Date.now() - live.startTime) / 1000)) : '00:00:00'}</div>
+        <div class="live-stats-row" style="margin-bottom:1.5rem">
+          <div class="live-stat">
+            <div class="live-stat-label">Buy-in</div>
+            <div class="live-stat-value" id="live-buyin-display">${live ? '$' + live.totalBuyIn.toLocaleString() : '-'}</div>
+          </div>
+          <div class="live-stat">
+            <div class="live-stat-label">Add-ons</div>
+            <div class="live-stat-value" id="live-addons-display">${live ? live.addOns.length : '-'}</div>
+          </div>
+          <div class="live-stat">
+            <div class="live-stat-label">Est. Stack</div>
+            <div class="live-stat-value" id="live-stack-display">-</div>
+          </div>
+          <div class="live-stat">
+            <div class="live-stat-label">Time</div>
+            <div class="live-stat-value" id="live-hours-display">${live ? (Math.floor((Date.now() - live.startTime) / 3600000)).toFixed(1) + 'h' : '-'}</div>
+          </div>
+        </div>
+
+        ${live ? `
+          <div style="display:flex;gap:0.75rem;justify-content:center;flex-wrap:wrap;margin-bottom:1rem">
+            <button class="btn btn-secondary" id="addon-btn">+ Add-on / Rebuy</button>
+            <button class="btn btn-gold" id="end-btn">⏹ End Session</button>
+          </div>
+        ` : `
+          <div style="max-width:400px;margin:0 auto">
+            <div class="form-grid" style="margin-bottom:1rem">
+              <div class="form-group">
+                <label>Location</label>
+                <input type="text" id="live-location" list="live-loc-list" placeholder="Casino / Home game">
+                <datalist id="live-loc-list">${[...new Set(getSessions().map(s=>s.location).filter(Boolean))].map(l=>`<option value="${l}">`).join('')}</datalist>
+              </div>
+              <div class="form-group">
+                <label>Game Type</label>
+                <input type="text" id="live-game" list="live-game-list" placeholder="NL Hold'em">
+                <datalist id="live-game-list">${GAME_TYPES.map(g=>`<option value="${g}">`).join('')}</datalist>
+              </div>
+              <div class="form-group">
+                <label>Stakes</label>
+                <input type="text" id="live-stakes" list="live-stakes-list" placeholder="1/2">
+                <datalist id="live-stakes-list">${STAKES_LIST.map(s=>`<option value="${s}">`).join('')}</datalist>
+              </div>
+              <div class="form-group">
+                <label>Buy-in ($)</label>
+                <input type="number" id="live-buyin" min="0" step="1" placeholder="200">
+              </div>
+            </div>
+            <button class="btn btn-primary" id="start-btn" style="width:100%;padding:0.75rem;font-size:1rem">&#9654; Start Session</button>
+          </div>
+        `}
+      </div>
+
+      ${live ? `
+        <div class="card">
+          <div class="card-title-lg" style="margin-bottom:1rem">Add-ons / Rebuys</div>
+          ${live.addOns.length === 0
+            ? '<div class="empty-state" style="padding:1rem"><div class="empty-sub">No add-ons yet</div></div>'
+            : live.addOns.map((a, i) => `<div class="recent-session"><div class="recent-left"><div class="recent-game">Add-on #${i+1}</div><div class="recent-meta">${new Date(a.time).toLocaleTimeString()}</div></div><div class="recent-profit positive">+$${a.amount}</div></div>`).join('')}
+        </div>
+      ` : `
+        <div class="card">
+          <div class="card-title-lg" style="margin-bottom:1rem">&#9998; Tips</div>
+          <ul style="color:var(--text2);font-size:0.875rem;padding-left:1.25rem;line-height:1.9">
+            <li>Start the timer when you sit down at the table</li>
+            <li>Track add-ons and rebuys throughout the session</li>
+            <li>End the session to automatically log it to your history</li>
+            <li>The live session is saved even if you close the browser</li>
+          </ul>
+        </div>
+      `}
+    </div>
+  `;
+
+  if (live) {
+    if (liveTimer) clearInterval(liveTimer);
+    liveTimer = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - live.startTime) / 1000);
+      const td = document.getElementById('timer-display');
+      const hd = document.getElementById('live-hours-display');
+      if (td) td.textContent = fmtTimer(elapsed);
+      if (hd) hd.textContent = (elapsed / 3600).toFixed(2) + 'h';
+      updateLiveBadge();
+    }, 1000);
+
+    container.querySelector('#addon-btn').addEventListener('click', () => {
+      const amt = parseFloat(prompt('Add-on / Rebuy amount ($):'));
+      if (isNaN(amt) || amt <= 0) return;
+      live.addOns.push({ amount: amt, time: Date.now() });
+      live.totalBuyIn += amt;
+      saveLive(live);
+      renderLiveView(container);
+    });
+
+    container.querySelector('#end-btn').addEventListener('click', () => {
+      const cashOut = parseFloat(prompt('Enter cash-out amount ($):'));
+      if (isNaN(cashOut) || cashOut < 0) { alert('Invalid amount'); return; }
+      clearInterval(liveTimer); liveTimer = null;
+      const durationMs = Date.now() - live.startTime;
+      const duration = Math.round(durationMs / 3600000 * 4) / 4;
+      addSession({
+        date: new Date(live.startTime).toISOString().slice(0,10),
+        location: live.location,
+        gameType: live.gameType,
+        stakes: live.stakes,
+        buyIn: live.totalBuyIn,
+        cashOut,
+        duration,
+        notes: live.addOns.length > 0 ? `${live.addOns.length} add-on(s): ${live.addOns.map(a=>'$'+a.amount).join(', ')}` : '',
+        tags: 'Live',
+        mood: 3,
+      });
+      saveLive(null);
+      updateLiveBadge();
+      alert(`Session ended! Result: ${fmt(cashOut - live.totalBuyIn)}`);
+      switchView('sessions');
+    });
+
+  } else {
+    container.querySelector('#start-btn').addEventListener('click', () => {
+      const buyIn = parseFloat(container.querySelector('#live-buyin').value);
+      if (!buyIn || buyIn <= 0) { alert('Enter a valid buy-in amount'); return; }
+      const live = {
+        startTime: Date.now(),
+        location: container.querySelector('#live-location').value.trim(),
+        gameType: container.querySelector('#live-game').value.trim(),
+        stakes: container.querySelector('#live-stakes').value.trim(),
+        totalBuyIn: buyIn,
+        addOns: [],
+      };
+      saveLive(live);
+      updateLiveBadge();
+      renderLiveView(container);
+    });
+  }
+}
+
+// ===== GOALS =====
+function renderGoalsView(container) {
+  const goals = getGoals();
+  const sessions = getSessions();
+  const now = new Date();
+  const thisMonth = now.toISOString().slice(0,7);
+  const thisYear = now.getFullYear().toString();
+
+  const monthlyProfit = sessions.filter(s => s.date && s.date.startsWith(thisMonth)).reduce((sum, s) => sum + (s.cashOut - s.buyIn), 0);
+  const yearlyProfit = sessions.filter(s => s.date && s.date.startsWith(thisYear)).reduce((sum, s) => sum + (s.cashOut - s.buyIn), 0);
+  const monthlyHours = sessions.filter(s => s.date && s.date.startsWith(thisMonth)).reduce((sum, s) => sum + (s.duration || 0), 0);
+  const yearlySessions = sessions.filter(s => s.date && s.date.startsWith(thisYear)).length;
+
+  function goalBlock(title, current, target, unit, color) {
+    if (!target) return '';
+    const pct = Math.min(100, Math.max(0, current / target * 100));
+    const fill = current >= 0 ? color : 'var(--red)';
+    const overshoot = current > target;
+    return `
+      <div class="goal-card">
+        <div class="goal-header">
+          <div>
+            <div class="goal-title">${title}</div>
+            <div class="goal-meta">${overshoot ? '🎉 Goal achieved!' : `${(target - current).toFixed(0)} ${unit} remaining`}</div>
+          </div>
+          <div class="goal-right">
+            <div class="goal-pct" style="color:${fill}">${pct.toFixed(0)}%</div>
+          </div>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${fill}"></div></div>
+        <div class="goal-numbers">
+          <span>${unit === 'sessions' ? current + ' sessions' : '$' + Math.abs(current).toLocaleString()}</span>
+          <span>Target: ${unit === 'sessions' ? target + ' sessions' : '$' + target.toLocaleString()}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  container.innerHTML = `
+    <div class="section-title">Goals & Tracking</div>
+
+    ${goalBlock('Monthly Profit Goal', monthlyProfit, goals.monthly, '$', 'var(--green)')}
+    ${goalBlock('Yearly Profit Goal', yearlyProfit, goals.yearly, '$', 'var(--green)')}
+    ${goalBlock('Monthly Hours Goal', monthlyHours, goals.monthlyHours, 'hours', 'var(--blue)')}
+    ${goalBlock('Yearly Sessions Goal', yearlySessions, goals.yearlySessions, 'sessions', 'var(--gold)')}
+
+    ${!goals.monthly && !goals.yearly && !goals.monthlyHours && !goals.yearlySessions
+      ? `<div class="empty-state"><div class="empty-icon">🎯</div><div class="empty-title">No goals set</div><div class="empty-sub">Set your goals below to track your progress</div></div>`
+      : ''}
+
+    <div class="section-title" style="margin-top:1.5rem">Set Goals</div>
+    <div class="goals-grid">
+      <div class="goal-set-card">
+        <div class="goal-set-title">&#128176; Monthly Profit Target ($)</div>
+        <div class="form-group">
+          <input type="number" id="g-monthly" min="0" step="50" placeholder="e.g. 1000" value="${goals.monthly || ''}">
+        </div>
+      </div>
+      <div class="goal-set-card">
+        <div class="goal-set-title">&#128200; Yearly Profit Target ($)</div>
+        <div class="form-group">
+          <input type="number" id="g-yearly" min="0" step="100" placeholder="e.g. 10000" value="${goals.yearly || ''}">
+        </div>
+      </div>
+      <div class="goal-set-card">
+        <div class="goal-set-title">&#9200; Monthly Hours Goal</div>
+        <div class="form-group">
+          <input type="number" id="g-hours" min="0" step="1" placeholder="e.g. 40" value="${goals.monthlyHours || ''}">
+        </div>
+      </div>
+      <div class="goal-set-card">
+        <div class="goal-set-title">&#127183; Yearly Sessions Goal</div>
+        <div class="form-group">
+          <input type="number" id="g-sessions" min="0" step="1" placeholder="e.g. 100" value="${goals.yearlySessions || ''}">
+        </div>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" id="save-goals-btn">&#10003; Save Goals</button>
+      <button class="btn btn-danger btn-sm" id="clear-goals-btn">Clear Goals</button>
+    </div>
+  `;
+
+  container.querySelector('#save-goals-btn').addEventListener('click', () => {
+    const g = {
+      monthly: parseFloat(container.querySelector('#g-monthly').value) || 0,
+      yearly: parseFloat(container.querySelector('#g-yearly').value) || 0,
+      monthlyHours: parseFloat(container.querySelector('#g-hours').value) || 0,
+      yearlySessions: parseFloat(container.querySelector('#g-sessions').value) || 0,
+    };
+    saveGoals(g);
+    renderGoalsView(container);
+  });
+
+  container.querySelector('#clear-goals-btn').addEventListener('click', () => {
+    if (confirm('Clear all goals?')) { saveGoals({}); renderGoalsView(container); }
+  });
+}
+
+// ===== MODAL =====
+function closeModal() {
+  document.getElementById('add-modal').style.display = 'none';
+  editingId = null;
+}
+
+// ===== LEAK FINDER ENGINE =====
+function detectLeaks(sessions) {
+  if (sessions.length < 5) return { leaks: [], score: null, insufficientData: true };
+
+  const leaks = [];
+  const sorted = [...sessions].sort((a, b) => a.date.localeCompare(b.date));
+  const fmtA = (v) => (v >= 0 ? '+' : '') + '€' + Math.abs(v).toFixed(0);
+  const avgProfit = s => s.reduce((t, x) => t + (x.cashOut - x.buyIn), 0) / s.length;
+
+  // 1. SESSION DURATION LEAK
+  const withDur = sessions.filter(s => s.duration > 0);
+  if (withDur.length >= 6) {
+    const short = withDur.filter(s => s.duration <= 3);
+    const long  = withDur.filter(s => s.duration > 3);
+    if (short.length >= 3 && long.length >= 3) {
+      const sAvg = avgProfit(short), lAvg = avgProfit(long);
+      if (lAvg < sAvg - 40) {
+        leaks.push({
+          id: 'duration', severity: lAvg < sAvg - 120 ? 'critical' : 'warning',
+          title: 'Performance Drops in Long Sessions',
+          icon: '⏳',
+          description: `Sessions under 3h avg ${fmtA(sAvg)}, sessions over 3h avg ${fmtA(lAvg)}. You play worse when fatigued.`,
+          data: [
+            { label: 'Short sessions (≤3h)', value: fmtA(sAvg), count: short.length, positive: sAvg >= 0 },
+            { label: 'Long sessions (>3h)',  value: fmtA(lAvg),  count: long.length,  positive: lAvg >= 0 },
+          ],
+          fix: 'Set a hard 3-hour session limit. Use a timer. Take 10-minute breaks every hour to stay sharp.',
+        });
+      }
+    }
+  }
+
+  // 2. MOOD LEAK
+  const withMood = sessions.filter(s => s.mood >= 1 && s.mood <= 5);
+  if (withMood.length >= 6) {
+    const bad  = withMood.filter(s => s.mood <= 2);
+    const good = withMood.filter(s => s.mood >= 4);
+    if (bad.length >= 2 && good.length >= 2) {
+      const bAvg = avgProfit(bad), gAvg = avgProfit(good);
+      if (bAvg < gAvg - 30) {
+        leaks.push({
+          id: 'mood', severity: bAvg < gAvg - 100 ? 'critical' : 'warning',
+          title: 'Playing Below Optimal Mental State',
+          icon: '🧠',
+          description: `You average ${fmtA(bAvg)} when mood is 😴😐 vs ${fmtA(gAvg)} when feeling 😊🔥. Emotional state is hurting your game.`,
+          data: [
+            { label: 'Poor mood (😴😐)', value: fmtA(bAvg), count: bad.length,  positive: bAvg >= 0 },
+            { label: 'Good mood (😊🔥)', value: fmtA(gAvg), count: good.length, positive: gAvg >= 0 },
+          ],
+          fix: 'Create a pre-session checklist: slept 7h+, not stressed, not hungry. If any fail — don\'t play.',
+        });
+      }
+    }
+  }
+
+  // 3. DAY OF WEEK LEAK
+  const dows = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const dowBuckets = Array(7).fill(null).map(() => []);
+  sessions.forEach(s => { const d = new Date(s.date + 'T12:00:00').getDay(); dowBuckets[d].push(s); });
+  const badDays = dowBuckets
+    .map((arr, i) => ({ day: dows[i], arr, avg: arr.length >= 3 ? avgProfit(arr) : null }))
+    .filter(d => d.avg !== null && d.avg < -40)
+    .sort((a, b) => a.avg - b.avg);
+  if (badDays.length > 0) {
+    const worst = badDays[0];
+    leaks.push({
+      id: 'dow', severity: worst.avg < -150 ? 'critical' : 'warning',
+      title: `Consistent Losses on ${worst.day}days`,
+      icon: '📅',
+      description: `You average ${fmtA(worst.avg)} on ${worst.day}s over ${worst.arr.length} sessions. Something about this day hurts your game.`,
+      data: badDays.slice(0, 4).map(d => ({ label: d.day + 's', value: fmtA(d.avg), count: d.arr.length, positive: false })),
+      fix: `Avoid playing on ${badDays.map(d => d.day + 's').join(', ')}. If you must, play shorter sessions with a strict stop-loss.`,
+    });
+  }
+
+  // 4. TILT / LOSS CHASING
+  let tiltCount = 0, tiltLoss = 0;
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1], curr = sorted[i];
+    const pp = prev.cashOut - prev.buyIn, cp = curr.cashOut - curr.buyIn;
+    const dayDiff = (new Date(curr.date) - new Date(prev.date)) / 86400000;
+    if (pp < -prev.buyIn * 0.5 && dayDiff <= 1 && cp < 0) { tiltCount++; tiltLoss += cp; }
+  }
+  if (tiltCount >= 2) {
+    leaks.push({
+      id: 'tilt', severity: tiltCount >= 4 ? 'critical' : 'warning',
+      title: 'Tilt / Loss Chasing Detected',
+      icon: '🔥',
+      description: `${tiltCount} times you played the same or next day after a big losing session — and lost again. Total extra losses: ${fmtA(tiltLoss)}.`,
+      data: [
+        { label: 'Back-to-back loss sessions', value: tiltCount + 'x', count: tiltCount, positive: false },
+        { label: 'Extra losses from chasing',  value: fmtA(tiltLoss), count: null, positive: false },
+      ],
+      fix: 'Mandatory rule: after losing more than 1 buy-in, take 24h off. No exceptions. Write it down as a rule.',
+    });
+  }
+
+  // 5. WIN RATE LEAK
+  const wins = sessions.filter(s => s.cashOut > s.buyIn).length;
+  const wr = wins / sessions.length;
+  if (wr < 0.42 && sessions.length >= 10) {
+    leaks.push({
+      id: 'winrate', severity: wr < 0.3 ? 'critical' : 'warning',
+      title: 'Below-Average Win Rate',
+      icon: '📊',
+      description: `Win rate of ${(wr * 100).toFixed(0)}% is below the typical 45-55% for a winning player. You\'re losing more sessions than you should.`,
+      data: [
+        { label: 'Win rate', value: (wr * 100).toFixed(0) + '%', count: sessions.length, positive: false },
+        { label: 'Winning sessions', value: wins + '', count: wins, positive: true },
+        { label: 'Losing sessions', value: (sessions.length - wins) + '', count: sessions.length - wins, positive: false },
+      ],
+      fix: 'Focus on game selection (find softer tables), reduce bluffing frequency, and review your biggest losing sessions.',
+    });
+  }
+
+  // 6. RAKE EATING PROFITS
+  const totalRake = sessions.reduce((s, x) => s + (x.rake || 0), 0);
+  const netProfit = sessions.reduce((s, x) => s + (x.cashOut - x.buyIn), 0);
+  const grossProfit = netProfit + totalRake;
+  if (totalRake > 0 && netProfit < 0 && grossProfit > 0) {
+    leaks.push({
+      id: 'rake', severity: 'critical',
+      title: 'Rake is Costing You Your Profits',
+      icon: '🏦',
+      description: `Without rake you\'d be profitable (${fmtA(grossProfit)}), but rake of €${totalRake.toFixed(2)} puts you in the red. You need a higher edge to beat the rake.`,
+      data: [
+        { label: 'Gross profit (before rake)', value: fmtA(grossProfit),     positive: true },
+        { label: 'Total rake paid',            value: '€' + totalRake.toFixed(2), positive: false },
+        { label: 'Net profit (after rake)',     value: fmtA(netProfit),       positive: false },
+      ],
+      fix: 'Look for rakeback offers, play in softer games with higher edge, or consider lower-rake platforms.',
+    });
+  }
+
+  // 7. STAKE JUMPING
+  const stkSessions = sessions.filter(s => s.stakes && s.stakes.includes('/'));
+  if (stkSessions.length >= 6) {
+    const groups = {};
+    stkSessions.forEach(s => {
+      const bb = parseFloat(s.stakes.split('/')[1]) || 0;
+      if (!groups[bb]) groups[bb] = [];
+      groups[bb].push(s.cashOut - s.buyIn);
+    });
+    const stakeList = Object.entries(groups)
+      .map(([bb, arr]) => ({ bb: parseFloat(bb), avg: avgProfit(arr), count: arr.length }))
+      .filter(s => s.count >= 3)
+      .sort((a, b) => a.bb - b.bb);
+    if (stakeList.length >= 2) {
+      const low = stakeList[0], high = stakeList[stakeList.length - 1];
+      if (high.avg < 0 && low.avg > high.avg + 40) {
+        leaks.push({
+          id: 'stakes', severity: high.avg < -100 ? 'critical' : 'warning',
+          title: 'Losing at Higher Stakes',
+          icon: '📈',
+          description: `You average ${fmtA(low.avg)} at ${low.bb} BB stakes but ${fmtA(high.avg)} at ${high.bb} BB. Your skill edge doesn\'t cover the higher stakes yet.`,
+          data: [
+            { label: `Stakes ${low.bb} BB`,  value: fmtA(low.avg),  count: low.count,  positive: low.avg >= 0 },
+            { label: `Stakes ${high.bb} BB`, value: fmtA(high.avg), count: high.count, positive: high.avg >= 0 },
+          ],
+          fix: 'Build a proven winrate at your current stake before moving up. Aim for +20 buy-ins at one level first.',
+        });
+      }
+    }
+  }
+
+  // 8. SHORT BUY-IN LEAK
+  if (sessions.length >= 6) {
+    const avgBI = sessions.reduce((s, x) => s + x.buyIn, 0) / sessions.length;
+    const short = sessions.filter(s => s.buyIn < avgBI * 0.65);
+    const full  = sessions.filter(s => s.buyIn >= avgBI * 0.65);
+    if (short.length >= 3 && full.length >= 3) {
+      const sAvg = avgProfit(short), fAvg = avgProfit(full);
+      if (sAvg < fAvg - 30) {
+        leaks.push({
+          id: 'buyin', severity: 'warning',
+          title: 'Short Buy-in Underperformance',
+          icon: '💸',
+          description: `Sessions where you bought in for less than usual (avg €${avgBI.toFixed(0)}) perform significantly worse.`,
+          data: [
+            { label: 'Short buy-in sessions', value: fmtA(sAvg), count: short.length, positive: sAvg >= 0 },
+            { label: 'Full buy-in sessions',  value: fmtA(fAvg), count: full.length,  positive: fAvg >= 0 },
+          ],
+          fix: 'Always buy in for the full max. Short stacking limits your ability to apply pressure and maximize value.',
+        });
+      }
+    }
+  }
+
+  // 9. CONSISTENCY / HIGH VARIANCE
+  if (sessions.length >= 10) {
+    const profits = sessions.map(s => s.cashOut - s.buyIn);
+    const mean = profits.reduce((a, b) => a + b, 0) / profits.length;
+    const stdDev = Math.sqrt(profits.reduce((s, x) => s + Math.pow(x - mean, 2), 0) / profits.length);
+    const cv = Math.abs(stdDev / (Math.abs(mean) + 1));
+    if (cv > 8 && stdDev > 200) {
+      leaks.push({
+        id: 'variance', severity: 'warning',
+        title: 'Extremely High Variance',
+        icon: '🎢',
+        description: `Your results swing wildly (std dev €${stdDev.toFixed(0)}). Very high variance can mask whether you\'re actually winning or losing long-term.`,
+        data: [
+          { label: 'Biggest win',  value: fmtA(Math.max(...profits)), positive: true },
+          { label: 'Biggest loss', value: fmtA(Math.min(...profits)), positive: false },
+          { label: 'Std deviation', value: '€' + stdDev.toFixed(0), positive: false },
+        ],
+        fix: 'Consider playing lower stakes or avoiding PLO hi-variance spots. Build a larger sample to understand your true winrate.',
+      });
+    }
+  }
+
+  // 10. LOCATION LEAK
+  const locGroups = {};
+  sessions.forEach(s => { const l = s.location || 'Unknown'; if (!locGroups[l]) locGroups[l] = []; locGroups[l].push(s); });
+  const locList = Object.entries(locGroups).filter(([, arr]) => arr.length >= 3).map(([loc, arr]) => ({ loc, avg: avgProfit(arr), count: arr.length }));
+  if (locList.length >= 2) {
+    const worst = locList.sort((a, b) => a.avg - b.avg)[0];
+    const best  = locList.sort((a, b) => b.avg - a.avg)[0];
+    if (worst.avg < -50 && best.avg - worst.avg > 80) {
+      leaks.push({
+        id: 'location', severity: 'warning',
+        title: `Losing at ${worst.loc}`,
+        icon: '📍',
+        description: `You average ${fmtA(worst.avg)} at ${worst.loc} vs ${fmtA(best.avg)} at ${best.loc}. One venue is consistently hurting your results.`,
+        data: locList.sort((a, b) => b.avg - a.avg).slice(0, 4).map(d => ({ label: d.loc, value: fmtA(d.avg), count: d.count, positive: d.avg >= 0 })),
+        fix: `Play less at ${worst.loc} or look for better game conditions there (softer tables, different time of day).`,
+      });
+    }
+  }
+
+  // Health Score
+  let score = 100;
+  leaks.forEach(l => { score -= l.severity === 'critical' ? 22 : 11; });
+  score = Math.max(5, Math.min(100, score));
+
+  return { leaks, score };
+}
+
+function renderLeakFinderView(container) {
+  const sessions = getSessions();
+  const { leaks, score, insufficientData } = detectLeaks(sessions);
+
+  const scoreColor = score >= 75 ? '#00d4aa' : score >= 50 ? '#f59e0b' : '#f43f5e';
+  const scoreLabel = score >= 75 ? 'Strong' : score >= 50 ? 'Some Issues' : 'Needs Work';
+
+  const sevColor = { critical: 'var(--red)', warning: 'var(--gold)', good: 'var(--green)' };
+  const sevBg    = { critical: 'var(--red-dim)', warning: 'var(--gold-dim)', good: 'var(--green-dim)' };
+  const sevLabel = { critical: '🔴 Critical', warning: '🟡 Warning', good: '🟢 Good' };
+
+  container.innerHTML = `
+    <div class="leak-layout">
+
+      ${insufficientData ? `
+        <div class="empty-state" style="padding:4rem">
+          <div class="empty-icon">📊</div>
+          <div class="empty-title">Not Enough Data</div>
+          <div class="empty-sub">Need at least 5 sessions for leak analysis. You have ${sessions.length}.</div>
+          <button class="btn btn-primary" style="margin-top:1rem" onclick="switchView('sessions')">+ Add Sessions</button>
+        </div>
+      ` : `
+        <div class="leak-header-row">
+          <div class="health-score-card">
+            <div class="health-score-ring">
+              <svg viewBox="0 0 120 120" width="120" height="120">
+                <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10"/>
+                <circle cx="60" cy="60" r="50" fill="none" stroke="${scoreColor}" stroke-width="10"
+                  stroke-dasharray="${2 * Math.PI * 50}" stroke-dashoffset="${2 * Math.PI * 50 * (1 - score / 100)}"
+                  stroke-linecap="round" transform="rotate(-90 60 60)" style="transition:stroke-dashoffset 1s ease"/>
+              </svg>
+              <div class="health-score-inner">
+                <div class="health-score-num" style="color:${scoreColor}">${score}</div>
+                <div class="health-score-sub">/ 100</div>
+              </div>
+            </div>
+            <div class="health-score-label" style="color:${scoreColor}">${scoreLabel}</div>
+            <div class="health-score-meta">Game Health Score</div>
+            <div class="health-score-meta">${sessions.length} sessions analyzed</div>
+          </div>
+
+          <div class="leak-summary-col">
+            <div class="leak-summary-title">Analysis Summary</div>
+            ${leaks.length === 0 ? `
+              <div class="leak-item leak-good">
+                <div class="leak-icon">✅</div>
+                <div>
+                  <div class="leak-title">No Major Leaks Detected</div>
+                  <div class="leak-desc">Your game looks solid based on available data. Keep adding sessions for deeper insights.</div>
+                </div>
+              </div>
+            ` : leaks.map(l => `
+              <div class="leak-item leak-${l.severity}" onclick="document.getElementById('leak-${l.id}').scrollIntoView({behavior:'smooth'})">
+                <div class="leak-icon">${l.icon}</div>
+                <div>
+                  <div class="leak-badge" style="background:${sevBg[l.severity]};color:${sevColor[l.severity]}">${sevLabel[l.severity]}</div>
+                  <div class="leak-title">${l.title}</div>
+                </div>
+                <div class="leak-arrow">›</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        ${leaks.length > 0 ? `
+          <div class="section-title" style="margin-top:0.5rem">Detailed Breakdown</div>
+          ${leaks.map(l => `
+            <div class="leak-detail-card leak-detail-${l.severity}" id="leak-${l.id}">
+              <div class="leak-detail-header">
+                <div style="display:flex;align-items:center;gap:0.75rem">
+                  <div class="leak-detail-icon">${l.icon}</div>
+                  <div>
+                    <div class="leak-detail-title">${l.title}</div>
+                    <span class="badge" style="background:${sevBg[l.severity]};color:${sevColor[l.severity]};margin-top:0.3rem;display:inline-flex">${sevLabel[l.severity]}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="leak-detail-desc">${l.description}</div>
+
+              <div class="leak-data-row">
+                ${l.data.map(d => `
+                  <div class="leak-data-box">
+                    <div class="leak-data-label">${d.label}${d.count !== null && d.count !== undefined ? ` <span style="color:var(--text3)">(${d.count})</span>` : ''}</div>
+                    <div class="leak-data-value ${d.positive ? 'positive' : 'negative'}">${d.value}</div>
+                  </div>
+                `).join('')}
+              </div>
+
+              <div class="leak-fix">
+                <div class="leak-fix-label">💡 Recommendation</div>
+                <div class="leak-fix-text">${l.fix}</div>
+              </div>
+            </div>
+          `).join('')}
+        ` : ''}
+
+        <div class="leak-detail-card" style="border-color:var(--green-dim)">
+          <div class="leak-detail-title" style="margin-bottom:0.75rem">📋 What This Analysis Covers</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;font-size:0.82rem;color:var(--text2)">
+            ${['Session duration fatigue','Mood & mental state impact','Day-of-week patterns','Tilt & loss chasing','Win rate analysis','Rake impact on profit','Stake level performance','Buy-in size patterns','Result variance','Location performance'].map(t => `<div>✓ ${t}</div>`).join('')}
+          </div>
+        </div>
+      `}
+    </div>
+  `;
+}
+
+// ===== INIT =====
+document.addEventListener('DOMContentLoaded', () => {
+  // Bankroll
+  const bankrollInput = document.getElementById('bankroll-input');
+  bankrollInput.value = getBankroll() || '';
+  bankrollInput.addEventListener('change', () => {
+    const v = parseFloat(bankrollInput.value) || 0;
+    saveBankroll(v);
+  });
+
+  // Nav
+  document.querySelectorAll('.nav-item').forEach(btn => {
+    btn.addEventListener('click', () => switchView(btn.dataset.view));
+  });
+
+  updateLiveBadge();
+  setInterval(updateLiveBadge, 5000);
+
+  switchView('dashboard');
+});
+</script>
+</body>
+</html>
