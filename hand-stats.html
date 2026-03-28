@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hand Statistics — PokerTrack Pro</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ══════════════════════════════════════════════════════
+   TOKENS
+══════════════════════════════════════════════════════ */
+:root {
+  --bg:        #080c09;
+  --bg2:       #0d1410;
+  --bg3:       #111a14;
+  --felt:      #112718;
+  --card:      #0f1c12;
+  --card2:     #142019;
+  --border:    rgba(201,168,76,0.18);
+  --border2:   rgba(201,168,76,0.35);
+  --gold:      #c9a84c;
+  --gold2:     #e8c96a;
+  --gold-dim:  rgba(201,168,76,0.10);
+  --cream:     #f0e8d5;
+  --cream2:    #b8ac94;
+  --cream3:    #7a7060;
+  --green:     #2ecc71;
+  --green-dim: rgba(46,204,113,0.12);
+  --amber:     #e8a020;
+  --amber-dim: rgba(232,160,32,0.12);
+  --red:       #e05252;
+  --red-dim:   rgba(224,82,82,0.12);
+  --blue:      #4e8ef7;
+  --radius:    10px;
+  --radius-lg: 16px;
+  --transition: 0.2s ease;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--cream);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+
+/* felt texture overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.005) 2px, rgba(255,255,255,0.005) 4px),
+    repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(255,255,255,0.003) 2px, rgba(255,255,255,0.003) 4px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ══════════════════════════════════════════════════════
+   LAYOUT
+══════════════════════════════════════════════════════ */
+.page {
+  position: relative;
+  z-index: 1;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+/* ══════════════════════════════════════════════════════
+   HEADER
+══════════════════════════════════════════════════════ */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.page-title {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--gold);
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 40px rgba(201,168,76,0.3);
+}
+
+.page-title span { color: var(--cream); }
+
+.page-subtitle {
+  font-size: 0.8rem;
+  color: var(--cream3);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-top: 0.2rem;
+}
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--cream2);
+  font-size: 0.8rem;
+  text-decoration: none;
+  transition: all var(--transition);
+  background: transparent;
+  cursor: pointer;
+}
+.back-btn:hover { border-color: var(--gold); color: var(--gold); }
+
+/* ══════════════════════════════════════════════════════
+   LEAKS SUMMARY PANEL
+══════════════════════════════════════════════════════ */
+.leaks-panel {
+  background: linear-gradient(135deg, rgba(224,82,82,0.08) 0%, rgba(14,20,15,0.8) 100%);
+  border: 1px solid rgba(224,82,82,0.3);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.leaks-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.leaks-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--red);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.leaks-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  background: var(--red-dim);
+  color: var(--red);
+  border: 1px solid rgba(224,82,82,0.3);
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+}
+
+.leaks-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.leak-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(224,82,82,0.1);
+  border: 1px solid rgba(224,82,82,0.25);
+  border-radius: 8px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+  color: var(--red);
+  cursor: default;
+  position: relative;
+}
+.leak-badge.warn {
+  background: rgba(232,160,32,0.1);
+  border-color: rgba(232,160,32,0.25);
+  color: var(--amber);
+}
+.leak-badge .leak-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+/* ══════════════════════════════════════════════════════
+   SECTIONS
+══════════════════════════════════════════════════════ */
+.section {
+  margin-bottom: 2rem;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 0.75rem 1rem;
+  background: linear-gradient(90deg, var(--felt) 0%, transparent 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 0;
+  transition: border-color var(--transition);
+  user-select: none;
+}
+.section-header:hover { border-color: var(--border2); }
+.section-header.open { border-radius: var(--radius) var(--radius) 0 0; border-bottom: none; }
+
+.section-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--gold);
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  letter-spacing: 0.02em;
+}
+
+.section-title .icon { font-size: 1.1rem; }
+
+.section-toggle {
+  font-size: 0.75rem;
+  color: var(--cream3);
+  transition: transform var(--transition);
+}
+.section-header.open .section-toggle { transform: rotate(180deg); }
+
+.section-body {
+  display: none;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  padding: 1.25rem;
+}
+.section-body.open { display: block; }
+
+/* ══════════════════════════════════════════════════════
+   CARDS GRID
+══════════════════════════════════════════════════════ */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.cards-grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+.cards-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+.cards-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+
+.stat-card {
+  background: linear-gradient(135deg, var(--card2) 0%, var(--bg3) 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+  position: relative;
+  transition: border-color var(--transition), transform var(--transition);
+}
+.stat-card:hover { border-color: var(--border2); transform: translateY(-1px); }
+.stat-card.green  { border-color: rgba(46,204,113,0.25); background: linear-gradient(135deg, rgba(46,204,113,0.07) 0%, var(--bg3) 100%); }
+.stat-card.amber  { border-color: rgba(232,160,32,0.25);  background: linear-gradient(135deg, rgba(232,160,32,0.07) 0%, var(--bg3) 100%); }
+.stat-card.red    { border-color: rgba(224,82,82,0.3);    background: linear-gradient(135deg, rgba(224,82,82,0.08) 0%, var(--bg3) 100%); }
+.stat-card.gold   { border-color: rgba(201,168,76,0.3);   background: linear-gradient(135deg, rgba(201,168,76,0.07) 0%, var(--bg3) 100%); }
+
+.stat-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--cream3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.4rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.stat-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: var(--cream);
+  line-height: 1;
+  margin-bottom: 0.3rem;
+}
+.stat-value.green { color: var(--green); }
+.stat-value.amber { color: var(--amber); }
+.stat-value.red   { color: var(--red); }
+.stat-value.gold  { color: var(--gold); }
+.stat-value.sm    { font-size: 1.2rem; }
+.stat-value.xs    { font-size: 1rem; }
+
+.stat-sub {
+  font-size: 0.7rem;
+  color: var(--cream3);
+}
+
+.stat-bar {
+  height: 3px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 2px;
+  margin-top: 0.5rem;
+  overflow: hidden;
+}
+.stat-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--gold);
+  transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.stat-bar-fill.green { background: var(--green); }
+.stat-bar-fill.amber { background: var(--amber); }
+.stat-bar-fill.red   { background: var(--red); }
+
+/* ══════════════════════════════════════════════════════
+   TABLE STYLES
+══════════════════════════════════════════════════════ */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.data-table th {
+  font-family: 'Playfair Display', serif;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--gold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.data-table td {
+  padding: 0.6rem 0.8rem;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  color: var(--cream2);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+}
+.data-table tr:hover td { background: rgba(255,255,255,0.02); }
+.data-table td.label {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--cream);
+}
+.data-table .pos-badge {
+  display: inline-block;
+  width: 36px;
+  text-align: center;
+  padding: 0.1rem 0;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+.pos-UTG { background: rgba(78,142,247,0.15); color: #4e8ef7; }
+.pos-MP  { background: rgba(139,92,246,0.15); color: #8b5cf6; }
+.pos-CO  { background: rgba(232,160,32,0.15); color: var(--amber); }
+.pos-BTN { background: rgba(201,168,76,0.15); color: var(--gold); }
+.pos-SB  { background: rgba(46,204,113,0.12); color: var(--green); }
+.pos-BB  { background: rgba(224,82,82,0.12);  color: var(--red); }
+
+.pill {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+}
+.pill.green { background: var(--green-dim); color: var(--green); }
+.pill.amber { background: var(--amber-dim); color: var(--amber); }
+.pill.red   { background: var(--red-dim);   color: var(--red); }
+.pill.gold  { background: var(--gold-dim);  color: var(--gold); }
+.pill.blue  { background: rgba(78,142,247,0.12); color: #4e8ef7; }
+
+/* ══════════════════════════════════════════════════════
+   WIN RATE DISPLAY
+══════════════════════════════════════════════════════ */
+.wr-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.wr-card {
+  flex: 1;
+  min-width: 120px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  text-align: center;
+}
+.wr-label { font-size: 0.65rem; color: var(--cream3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.3rem; }
+.wr-value { font-family: 'JetBrains Mono', monospace; font-size: 1.4rem; font-weight: 600; }
+
+/* ══════════════════════════════════════════════════════
+   HAND STRENGTH BARS
+══════════════════════════════════════════════════════ */
+.hand-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 80px 80px;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.hand-row:last-child { border-bottom: none; }
+.hand-name { font-size: 0.8rem; color: var(--cream2); font-weight: 500; }
+.hand-bar-wrap { background: rgba(255,255,255,0.05); border-radius: 4px; height: 6px; overflow: hidden; }
+.hand-bar-fill { height: 100%; border-radius: 4px; background: var(--gold); transition: width 1.2s cubic-bezier(0.4,0,0.2,1); }
+.hand-freq { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: var(--cream2); text-align: right; }
+.hand-wr { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; text-align: right; }
+
+/* ══════════════════════════════════════════════════════
+   TOOLTIP
+══════════════════════════════════════════════════════ */
+[data-tip] { cursor: help; }
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1a2820;
+  border: 1px solid var(--border2);
+  color: var(--cream2);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1.4;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  white-space: normal;
+  max-width: 220px;
+  text-align: left;
+  z-index: 999;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+[data-tip]:hover::after { opacity: 1; }
+.stat-label [data-tip]::after { bottom: calc(100% + 6px); left: 0; transform: none; }
+
+/* ══════════════════════════════════════════════════════
+   DIVIDERS + MISC
+══════════════════════════════════════════════════════ */
+.sub-heading {
+  font-family: 'Playfair Display', serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--gold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 1.25rem 0 0.75rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.sub-heading:first-child { margin-top: 0; }
+
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+.three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.25rem; }
+
+.info-note {
+  font-size: 0.72rem;
+  color: var(--cream3);
+  margin-top: 0.5rem;
+  font-style: italic;
+}
+
+.hand-replayer-placeholder {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--cream3);
+  border: 1px dashed rgba(255,255,255,0.1);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+}
+
+@media (max-width: 900px) {
+  .cards-grid.cols-4 { grid-template-columns: repeat(2, 1fr); }
+  .two-col, .three-col { grid-template-columns: 1fr; }
+  .hand-row { grid-template-columns: 120px 1fr 70px 70px; }
+}
+@media (max-width: 600px) {
+  .page { padding: 1rem 0.75rem 3rem; }
+  .cards-grid { grid-template-columns: repeat(2, 1fr); }
+  .hand-row { grid-template-columns: 100px 1fr 60px; }
+  .hand-row .hand-wr { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ═══════════════ HEADER ═══════════════ -->
+  <div class="page-header">
+    <div>
+      <div class="page-title">♠ Hand <span>Statistics</span></div>
+      <div class="page-subtitle">Detailed poker analytics — edit STATS object to update all values</div>
+    </div>
+    <a href="index.html" class="back-btn">← Back to Dashboard</a>
+  </div>
+
+  <!-- ═══════════════ LEAKS PANEL (auto-populated) ═══════════════ -->
+  <div class="leaks-panel" id="leaks-panel">
+    <div class="leaks-header">
+      <div class="leaks-title">⚠ Leak Detector <span class="leaks-count" id="leaks-count">0 leaks</span></div>
+      <div style="font-size:0.7rem;color:var(--cream3)">Thresholds auto-applied</div>
+    </div>
+    <div class="leaks-grid" id="leaks-grid"></div>
+  </div>
+
+  <!-- ═══════════════ SESSION & BANKROLL ═══════════════ -->
+  <div class="section">
+    <div class="section-header open" data-section="session">
+      <div class="section-title"><span class="icon">💰</span> Session &amp; Bankroll</div>
+      <div class="section-toggle">▼</div>
+    </div>
+    <div class="section-body open" id="section-session">
+      <div class="sub-heading">Win Rate (bb/100)</div>
+      <div class="wr-row" id="wr-row"></div>
+      <div class="two-col">
+        <div>
+          <div class="sub-heading">Overview</div>
+          <div class="cards-grid cols-2" id="session-cards"></div>
+        </div>
+        <div>
+          <div class="sub-heading">Notable Hands</div>
+          <div id="notable-hands"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ PREFLOP STATS ═══════════════ -->
+  <div class="section">
+    <div class="section-header open" data-section="preflop">
+      <div class="section-title"><span class="icon">🃏</span> Preflop Stats</div>
+      <div class="section-toggle">▼</div>
+    </div>
+    <div class="section-body open" id="section-preflop">
+      <div class="cards-grid" id="preflop-cards"></div>
+      <div class="sub-heading">Open Raise % by Position</div>
+      <div id="open-raise-bars"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ POSITIONAL STATS ═══════════════ -->
+  <div class="section">
+    <div class="section-header open" data-section="positional">
+      <div class="section-title"><span class="icon">🎯</span> Positional Stats</div>
+      <div class="section-toggle">▼</div>
+    </div>
+    <div class="section-body open" id="section-positional">
+      <div id="positional-table"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ POSTFLOP STATS ═══════════════ -->
+  <div class="section">
+    <div class="section-header open" data-section="postflop">
+      <div class="section-title"><span class="icon">🔥</span> Postflop Stats</div>
+      <div class="section-toggle">▼</div>
+    </div>
+    <div class="section-body open" id="section-postflop">
+      <div class="two-col">
+        <div>
+          <div class="sub-heading">C-Bet &amp; Fold to C-Bet</div>
+          <div class="cards-grid cols-2" id="cbet-cards"></div>
+        </div>
+        <div>
+          <div class="sub-heading">Aggression &amp; Showdown</div>
+          <div class="cards-grid cols-2" id="agg-cards"></div>
+        </div>
+      </div>
+      <div class="sub-heading">Check-Raise % by Street</div>
+      <div class="cards-grid cols-3" id="cr-cards"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ BET SIZING ═══════════════ -->
+  <div class="section">
+    <div class="section-header open" data-section="sizing">
+      <div class="section-title"><span class="icon">📐</span> Bet Sizing Analysis</div>
+      <div class="section-toggle">▼</div>
+    </div>
+    <div class="section-body open" id="section-sizing">
+      <div class="two-col">
+        <div>
+          <div class="sub-heading">Avg Bet Size (% of Pot)</div>
+          <div class="cards-grid cols-3" id="betsize-cards"></div>
+        </div>
+        <div>
+          <div class="sub-heading">All-In &amp; Overbet</div>
+          <div class="cards-grid cols-2" id="allin-cards"></div>
+          <div id="allin-ev"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ HAND STRENGTH ═══════════════ -->
+  <div class="section">
+    <div class="section-header open" data-section="hands">
+      <div class="section-title"><span class="icon">♥</span> Hand Strength &amp; Frequency</div>
+      <div class="section-toggle">▼</div>
+    </div>
+    <div class="section-body open" id="section-hands">
+      <div class="two-col">
+        <div>
+          <div class="sub-heading">Starting Hand Categories</div>
+          <div id="hand-bars"></div>
+        </div>
+        <div>
+          <div class="sub-heading">Category Win Rates</div>
+          <div id="hand-category-table"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /page -->
+
+<script>
+/* ══════════════════════════════════════════════════════
+   ★ EDIT THIS OBJECT TO UPDATE ALL DASHBOARD VALUES ★
+══════════════════════════════════════════════════════ */
+const STATS = {
+  session: {
+    totalHands:  48392,
+    roi:         18.3,      // % (tournament ROI)
+    winRate: {
+      last100:    12.4,     // bb/100
+      last500:     8.7,
+      last1000:    6.2,
+      all:         4.8,
+    },
+    biggestWin:  { amount: 847,  hand: 'AA vs KK — flopped set vs overpair',       date: '2026-03-15' },
+    biggestLoss: { amount: -623, hand: 'KK vs AA — all-in pre, cooler',            date: '2026-02-28' },
+  },
+
+  preflop: {
+    vpip:             24.3,   // %
+    pfr:              18.7,   // %
+    threeBet:          7.2,   // %
+    fourBet:           2.1,   // %
+    foldToThreeBet:   58.4,   // %
+    limp:              3.2,   // % — leak if > 5
+    openRaise: {
+      UTG: 14.2, MP: 18.5, CO: 26.3, BTN: 38.7, SB: 44.2, BB: 0,
+    },
+  },
+
+  positional: {
+    UTG: { vpip: 14.2, pfr: 12.1, rfi: 13.8, threeBet:  4.2, winRate:  2.4 },
+    MP:  { vpip: 18.5, pfr: 15.2, rfi: 17.9, threeBet:  5.8, winRate:  3.1 },
+    CO:  { vpip: 26.3, pfr: 22.8, rfi: 25.4, threeBet:  7.3, winRate:  5.7 },
+    BTN: { vpip: 38.7, pfr: 32.4, rfi: 37.1, threeBet:  9.1, winRate:  8.9 }, // 3-bet from BTN: leak if < 8%
+    SB:  { vpip: 28.4, pfr: 21.3, rfi:    0, threeBet: 11.4, winRate: -2.3 },
+    BB:  { vpip: 44.2, pfr: 12.8, rfi:    0, threeBet:  8.7, winRate: -4.1 },
+  },
+
+  postflop: {
+    cBetFlop:          62.4,  // %
+    cBetTurn:          48.7,  // %
+    cBetRiver:         31.2,  // %
+    foldToCBetFlop:    41.3,  // %
+    foldToCBetTurn:    38.7,  // %
+    foldToCBetRiver:   35.2,  // %
+    af:                 2.8,  // Aggression Factor
+    afq:               48.3,  // Aggression Frequency %
+    wtsd:              24.7,  // Went to Showdown %
+    wsd:               51.2,  // Won $ at Showdown %
+    checkRaiseFlop:     8.3,  // %
+    checkRaiseTurn:     6.1,  // %
+    checkRaiseRiver:    3.8,  // %
+  },
+
+  betSizing: {
+    avgBetFlop:   52.3,       // % of pot
+    avgBetTurn:   63.8,
+    avgBetRiver:  74.2,
+    overbetFreq:   8.4,       // % of bets that are overbets (>100% pot)
+    allInFreq:     3.2,       // % of hands that go all-in
+    allInEV:     124.5,       // expected EV from all-in spots (€)
+    allInActual:  98.3,       // actual result from all-in spots (€)
+  },
+
+  handStrength: {
+    categories: {
+      // wtsd = Went to Showdown % with this hand category — leak if premium wtsd < 60
+      premium:     { freq: 4.8,  winRate: 72.3, showdownWR: 81.4, wtsd: 54.2 },
+      strong:      { freq: 8.2,  winRate: 58.7, showdownWR: 64.2, wtsd: 48.7 },
+      speculative: { freq: 22.4, winRate: 38.2, showdownWR: 44.7, wtsd: 28.3 },
+      marginal:    { freq: 18.3, winRate: 31.4, showdownWR: 38.1, wtsd: 19.6 },
+    },
+    startingHands: {
+      'Pocket Pairs':       { freq: 5.9,  winRate: 52.3 },
+      'Suited Connectors':  { freq: 4.7,  winRate: 41.2 },
+      'Broadway Hands':     { freq: 14.8, winRate: 56.7 },
+      'Suited Aces':        { freq: 3.2,  winRate: 44.8 },
+      'Offsuit Broadways':  { freq: 9.4,  winRate: 38.6 },
+      'Other Offsuit':      { freq: 62.0, winRate: 24.3 },
+    },
+  },
+};
+
+/* ══════════════════════════════════════════════════════
+   LEAK RULES  — { label, check fn → bool, severity }
+══════════════════════════════════════════════════════ */
+const LEAK_RULES = [
+  { label: `Limp% too high (${STATS.preflop.limp}%)`,             check: () => STATS.preflop.limp > 5,                 severity: 'red',  tip: 'Limping is generally a leak — raise or fold preflop.' },
+  { label: `3-Bet% too low (${STATS.preflop.threeBet}%)`,          check: () => STATS.preflop.threeBet < 5,             severity: 'red',  tip: 'Consider 3-betting more for value and as a bluff.' },
+  { label: `Fold to 3-Bet high (${STATS.preflop.foldToThreeBet}%)`, check: () => STATS.preflop.foldToThreeBet > 65,     severity: 'red',  tip: 'You are over-folding to 3-bets. Widen your calling/4-bet range.' },
+  { label: `BTN RFI low (${STATS.positional.BTN.rfi}%)`,           check: () => STATS.positional.BTN.rfi < 35,         severity: 'red',  tip: 'Button is your most profitable position — open more.' },
+  { label: `Low 3-Bet from BTN (${STATS.positional.BTN.threeBet}%)`, check: () => STATS.positional.BTN.threeBet < 8,   severity: 'red',  tip: 'On the button you have position and leverage — 3-bet more for value and as a bluff. Target: 8–14%.' },
+  { label: `Low WTSD w/ premium hands (${STATS.handStrength.categories.premium.wtsd}%)`, check: () => STATS.handStrength.categories.premium.wtsd < 60, severity: 'red', tip: 'You are not going to showdown enough with strong hands — possible over-folding to aggression.' },
+  { label: `Flop C-Bet low (${STATS.postflop.cBetFlop}%)`,         check: () => STATS.postflop.cBetFlop < 50,          severity: 'red',  tip: 'You are giving up too many flops as the preflop aggressor.' },
+  { label: `W$SD below 50% (${STATS.postflop.wsd}%)`,              check: () => STATS.postflop.wsd < 50,               severity: 'red',  tip: 'Going to showdown too often with weak holdings.' },
+  { label: `WTSD high (${STATS.postflop.wtsd}%)`,                  check: () => STATS.postflop.wtsd > 32,              severity: 'warn', tip: 'You may be calling down too light. Target 24–30%.' },
+  { label: `PFR/VPIP gap wide (${(STATS.preflop.vpip - STATS.preflop.pfr).toFixed(1)}pp)`, check: () => (STATS.preflop.vpip - STATS.preflop.pfr) > 8, severity: 'warn', tip: 'Large gap between VPIP and PFR suggests too much passive play.' },
+  { label: `SB win rate negative (${STATS.positional.SB.winRate} bb/100)`, check: () => STATS.positional.SB.winRate < -5, severity: 'warn', tip: 'SB should be near -3 bb/100 at most. Tighten up from the small blind.' },
+  { label: `All-in EV gap (-€${(STATS.betSizing.allInEV - STATS.betSizing.allInActual).toFixed(1)})`, check: () => (STATS.betSizing.allInEV - STATS.betSizing.allInActual) > 30, severity: 'warn', tip: 'Running below EV in all-in spots. Likely variance — track over more hands.' },
+];
+
+/* ══════════════════════════════════════════════════════
+   HELPERS
+══════════════════════════════════════════════════════ */
+function color(val, greenAbove, redBelow) {
+  if (val >= greenAbove) return 'green';
+  if (val <= redBelow)   return 'red';
+  return 'amber';
+}
+function pct(v)   { return typeof v === 'number' ? v.toFixed(1) + '%' : v; }
+function num(v,d=1){ return typeof v === 'number' ? v.toFixed(d) : v; }
+function bb(v)    { return (v >= 0 ? '+' : '') + v.toFixed(1) + ' bb/100'; }
+function bbColor(v){ return v >= 3 ? 'green' : v >= 0 ? 'amber' : 'red'; }
+
+function statCard(label, value, cls, sub, bar, barPct, tip) {
+  const tipAttr = tip ? ` data-tip="${tip}"` : '';
+  return `
+  <div class="stat-card ${cls || ''}">
+    <div class="stat-label"${tipAttr}>${label}</div>
+    <div class="stat-value ${cls || ''}">${value}</div>
+    ${sub ? `<div class="stat-sub">${sub}</div>` : ''}
+    ${bar !== false ? `<div class="stat-bar"><div class="stat-bar-fill ${cls||''}" style="width:0%" data-target="${Math.min(100,barPct||0)}%"></div></div>` : ''}
+  </div>`;
+}
+
+/* Animated counter */
+function animateCounters() {
+  document.querySelectorAll('.stat-value[data-count]').forEach(el => {
+    const target = parseFloat(el.dataset.count);
+    const suffix = el.dataset.suffix || '';
+    const decimals = el.dataset.dec ? parseInt(el.dataset.dec) : 0;
+    const duration = 900;
+    const start = performance.now();
+    function step(now) {
+      const t = Math.min(1, (now - start) / duration);
+      const ease = 1 - Math.pow(1 - t, 3);
+      el.textContent = (target * ease).toFixed(decimals) + suffix;
+      if (t < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  });
+  document.querySelectorAll('.stat-bar-fill[data-target]').forEach(el => {
+    setTimeout(() => { el.style.width = el.dataset.target; }, 100);
+  });
+}
+
+/* ══════════════════════════════════════════════════════
+   BUILD LEAKS PANEL
+══════════════════════════════════════════════════════ */
+function buildLeaks() {
+  const active = LEAK_RULES.filter(r => r.check());
+  document.getElementById('leaks-count').textContent = active.length + (active.length === 1 ? ' leak' : ' leaks');
+  const grid = document.getElementById('leaks-grid');
+  if (active.length === 0) {
+    grid.innerHTML = `<div style="color:var(--green);font-size:0.8rem">✓ No leaks detected above threshold</div>`;
+    return;
+  }
+  grid.innerHTML = active.map(l => `
+    <div class="leak-badge ${l.severity === 'warn' ? 'warn' : ''}" data-tip="${l.tip}">
+      <span class="leak-dot"></span>${l.label}
+    </div>`).join('');
+}
+
+/* ══════════════════════════════════════════════════════
+   BUILD SESSION & BANKROLL
+══════════════════════════════════════════════════════ */
+function buildSession() {
+  const s = STATS.session;
+  const wr = s.winRate;
+
+  // Win rate row
+  const wrEl = document.getElementById('wr-row');
+  const wrData = [
+    { label: 'Last 100', val: wr.last100 },
+    { label: 'Last 500', val: wr.last500 },
+    { label: 'Last 1000', val: wr.last1000 },
+    { label: 'All-time', val: wr.all },
+  ];
+  wrEl.innerHTML = wrData.map(d => `
+    <div class="wr-card">
+      <div class="wr-label">${d.label}</div>
+      <div class="wr-value ${bbColor(d.val)}" data-count="${d.val}" data-suffix=" bb/100" data-dec="1">${d.val.toFixed(1)} bb/100</div>
+    </div>`).join('');
+
+  // Cards
+  const sc = document.getElementById('session-cards');
+  sc.innerHTML =
+    statCard('Total Hands', s.totalHands.toLocaleString(), 'gold', '', false) +
+    statCard('Tournament ROI', pct(s.roi), color(s.roi,15,0), '', false, 0, 'Return on investment across tournament buy-ins') +
+    statCard('All-time Win Rate', bb(wr.all), bbColor(wr.all), '', false, 0, 'Overall win rate in big blinds per 100 hands') +
+    statCard('Win Rate (500h)', bb(wr.last500), bbColor(wr.last500), 'recent 500', false);
+
+  // Notable hands
+  const nh = document.getElementById('notable-hands');
+  nh.innerHTML = `
+    <div class="stat-card green" style="margin-bottom:0.6rem">
+      <div class="stat-label">🏆 Biggest Win</div>
+      <div class="stat-value green sm">+€${s.biggestWin.amount.toLocaleString()}</div>
+      <div class="stat-sub" style="margin-top:0.3rem">${s.biggestWin.hand}</div>
+      <div class="stat-sub">${s.biggestWin.date} <span class="hand-replayer-placeholder" style="margin-left:0.5rem">▶ Replay (soon)</span></div>
+    </div>
+    <div class="stat-card red">
+      <div class="stat-label">💸 Biggest Loss</div>
+      <div class="stat-value red sm">€${s.biggestLoss.amount.toLocaleString()}</div>
+      <div class="stat-sub" style="margin-top:0.3rem">${s.biggestLoss.hand}</div>
+      <div class="stat-sub">${s.biggestLoss.date} <span class="hand-replayer-placeholder" style="margin-left:0.5rem">▶ Replay (soon)</span></div>
+    </div>`;
+}
+
+/* ══════════════════════════════════════════════════════
+   BUILD PREFLOP
+══════════════════════════════════════════════════════ */
+function buildPreflop() {
+  const p = STATS.preflop;
+  const el = document.getElementById('preflop-cards');
+  const limpCls = p.limp > 5 ? 'red' : 'green';
+
+  el.innerHTML =
+    statCard('VPIP', pct(p.vpip), color(p.vpip,20,30), 'Voluntarily Put $ In Pot', true, p.vpip, 'VPIP: % of hands where you voluntarily put money in the pot preflop. Target: 18–28% for full-ring, 22–35% for 6-max.') +
+    statCard('PFR', pct(p.pfr), color(p.pfr,15,8), 'Preflop Raise %', true, p.pfr, 'PFR: How often you raise preflop. Should be close to VPIP. Target: 15–25%.') +
+    statCard('3-Bet %', pct(p.threeBet), color(p.threeBet,6,4), '', true, p.threeBet * 4, '3-Bet %: How often you re-raise preflop. Target: 6–10%.') +
+    statCard('4-Bet %', pct(p.fourBet), color(p.fourBet,2,0.5), '', true, p.fourBet * 20, '4-Bet %: How often you 4-bet. Target: 1.5–3%.') +
+    statCard('Fold to 3-Bet', pct(p.foldToThreeBet), color(55,p.foldToThreeBet,p.foldToThreeBet), '', true, p.foldToThreeBet, 'Fold to 3-Bet: % you fold when facing a 3-bet. Target: 45–60%. Higher = exploitable.') +
+    statCard('Limp %', pct(p.limp), limpCls, limpCls === 'red' ? '⚠ Leak detected' : '✓ Within range', true, p.limp * 5, 'Limp %: Should be near 0. Limping is generally a leak — raise or fold instead.');
+
+  // Open raise bars
+  const orEl = document.getElementById('open-raise-bars');
+  const positions = ['UTG','MP','CO','BTN','SB'];
+  const targets = { UTG: [12,18], MP: [15,22], CO: [22,32], BTN: [35,50], SB: [35,55] };
+  orEl.innerHTML = positions.map(pos => {
+    const val = p.openRaise[pos];
+    const [lo, hi] = targets[pos] || [0,100];
+    const cls = val >= lo && val <= hi ? 'green' : val < lo ? 'red' : 'amber';
+    return `
+    <div style="display:grid;grid-template-columns:50px 1fr 55px 80px;align-items:center;gap:0.75rem;padding:0.4rem 0;border-bottom:1px solid rgba(255,255,255,0.04)">
+      <span class="pos-badge pos-${pos}">${pos}</span>
+      <div class="hand-bar-wrap"><div class="stat-bar-fill ${cls}" style="width:0%;height:100%" data-target="${val}%"></div></div>
+      <span class="pill ${cls}" style="text-align:right">${val}%</span>
+      <span style="font-size:0.68rem;color:var(--cream3)">target ${lo}–${hi}%</span>
+    </div>`;
+  }).join('');
+}
+
+/* ══════════════════════════════════════════════════════
+   BUILD POSITIONAL TABLE
+══════════════════════════════════════════════════════ */
+function buildPositional() {
+  const pos = STATS.positional;
+  const el = document.getElementById('positional-table');
+  const rows = Object.entries(pos).map(([p, d]) => {
+    const wrCls = bbColor(d.winRate);
+    const tbCls = d.threeBet >= 8 ? 'green' : d.threeBet >= 5 ? 'amber' : 'red';
+    return `
+    <tr>
+      <td class="label"><span class="pos-badge pos-${p}">${p}</span></td>
+      <td>${pct(d.vpip)}</td>
+      <td>${pct(d.pfr)}</td>
+      <td>${p === 'SB' || p === 'BB' ? '<span style="color:var(--cream3)">—</span>' : pct(d.rfi)}</td>
+      <td><span class="pill ${tbCls}">${pct(d.threeBet)}</span></td>
+      <td><span class="pill ${wrCls}">${bb(d.winRate)}</span></td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Position</th>
+        <th data-tip="Voluntarily Put $ In Pot %">VPIP</th>
+        <th data-tip="Preflop Raise %">PFR</th>
+        <th data-tip="Raise First In — open raise when folded to you">RFI</th>
+        <th data-tip="3-Bet % from this position — BTN target: 8–14%">3-Bet %</th>
+        <th data-tip="Win rate in big blinds per 100 hands from this position">Win Rate (bb/100)</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+/* ══════════════════════════════════════════════════════
+   BUILD POSTFLOP
+══════════════════════════════════════════════════════ */
+function buildPostflop() {
+  const p = STATS.postflop;
+
+  // C-Bet cards
+  const cbEl = document.getElementById('cbet-cards');
+  cbEl.innerHTML =
+    statCard('C-Bet Flop',  pct(p.cBetFlop),  color(p.cBetFlop,55,40),  '↕ Fold ' + pct(p.foldToCBetFlop), true, p.cBetFlop,   'Continuation bet on flop as preflop aggressor. Target 55–75%.') +
+    statCard('C-Bet Turn',  pct(p.cBetTurn),  color(p.cBetTurn,45,30),  '↕ Fold ' + pct(p.foldToCBetTurn), true, p.cBetTurn,   'C-bet on turn. Should be more polar than flop. Target 40–55%.') +
+    statCard('C-Bet River', pct(p.cBetRiver), color(p.cBetRiver,30,20), '↕ Fold ' + pct(p.foldToCBetRiver), true, p.cBetRiver, 'River c-bet. Very polar range. Target 25–40%.') +
+    statCard('Fold / Flop', pct(p.foldToCBetFlop),  color(40,p.foldToCBetFlop,p.foldToCBetFlop), 'vs c-bet', true, p.foldToCBetFlop, 'How often you fold to a flop c-bet. Target 40–55%.') +
+    statCard('Fold / Turn', pct(p.foldToCBetTurn),  color(40,p.foldToCBetTurn,p.foldToCBetTurn), 'vs c-bet', true, p.foldToCBetTurn, 'How often you fold to a turn c-bet.') +
+    statCard('Fold / River', pct(p.foldToCBetRiver), color(35,p.foldToCBetRiver,p.foldToCBetRiver), 'vs c-bet', true, p.foldToCBetRiver, 'How often you fold to a river c-bet.');
+
+  // Aggression + showdown
+  const aggEl = document.getElementById('agg-cards');
+  aggEl.innerHTML =
+    statCard('Agg Factor', num(p.af), color(p.af,2.5,1.5), 'bet+raise / call', false, 0, 'Aggression Factor: (bets+raises)/calls. Target: 2–4.') +
+    statCard('Agg Freq', pct(p.afq), color(p.afq,45,30), '% streets w/ bet/raise', true, p.afq, 'Aggression Frequency: % of streets where you bet or raise. Target: 40–55%.') +
+    statCard('WTSD', pct(p.wtsd), color(28,p.wtsd,p.wtsd), 'Went to Showdown', true, p.wtsd, 'Went to Showdown %: % of hands where you see a showdown. Target: 24–30%.') +
+    statCard('W$SD', pct(p.wsd), color(p.wsd,52,47), 'Won $ at Showdown', true, p.wsd, 'Won $ at Showdown: % of showdowns you win. Target: 50–55%.');
+
+  // Check-raise
+  const crEl = document.getElementById('cr-cards');
+  crEl.innerHTML =
+    statCard('CR Flop',  pct(p.checkRaiseFlop),  color(p.checkRaiseFlop,7,3),  '', true, p.checkRaiseFlop * 5, 'Check-raise frequency on the flop. Target: 7–12%.') +
+    statCard('CR Turn',  pct(p.checkRaiseTurn),  color(p.checkRaiseTurn,5,2),  '', true, p.checkRaiseTurn * 5, 'Check-raise frequency on the turn. Target: 5–9%.') +
+    statCard('CR River', pct(p.checkRaiseRiver), color(p.checkRaiseRiver,3,1), '', true, p.checkRaiseRiver * 8, 'Check-raise frequency on the river. Target: 3–6%.');
+}
+
+/* ══════════════════════════════════════════════════════
+   BUILD BET SIZING
+══════════════════════════════════════════════════════ */
+function buildBetSizing() {
+  const b = STATS.betSizing;
+
+  const bsEl = document.getElementById('betsize-cards');
+  bsEl.innerHTML =
+    statCard('Flop',  pct(b.avgBetFlop),  color(b.avgBetFlop,45,70),  'avg % of pot', true, b.avgBetFlop, 'Average flop bet as % of pot. 40–75% is standard.') +
+    statCard('Turn',  pct(b.avgBetTurn),  color(b.avgBetTurn,55,75),  'avg % of pot', true, b.avgBetTurn, 'Average turn bet as % of pot. 50–75% is standard.') +
+    statCard('River', pct(b.avgBetRiver), color(b.avgBetRiver,60,85), 'avg % of pot', true, b.avgBetRiver, 'Average river bet as % of pot. Can be larger/polar.');
+
+  const aiEl = document.getElementById('allin-cards');
+  aiEl.innerHTML =
+    statCard('Overbet Freq', pct(b.overbetFreq), color(b.overbetFreq,5,15), '> 100% pot', true, b.overbetFreq * 4, 'How often your bets exceed 100% of the pot. 5–15% is reasonable.') +
+    statCard('All-In Freq',  pct(b.allInFreq),   color(b.allInFreq,2,8),    '% of hands',  true, b.allInFreq * 8,  'How often a hand reaches all-in. Varies widely by game type.');
+
+  const evEl = document.getElementById('allin-ev');
+  const diff = b.allInEV - b.allInActual;
+  const evCls = diff > 30 ? 'amber' : diff > 0 ? 'green' : 'green';
+  evEl.innerHTML = `
+    <div class="stat-card ${evCls}" style="margin-top:0.75rem">
+      <div class="stat-label" data-tip="All-in EV is your theoretical expectation based on equity. Running below EV = bad run-good, not necessarily bad play.">All-In EV vs Actual</div>
+      <div style="display:flex;gap:1rem;align-items:flex-end;margin-top:0.4rem">
+        <div>
+          <div style="font-size:0.65rem;color:var(--cream3);margin-bottom:0.2rem">Expected EV</div>
+          <div class="stat-value sm green">+€${b.allInEV.toFixed(1)}</div>
+        </div>
+        <div>
+          <div style="font-size:0.65rem;color:var(--cream3);margin-bottom:0.2rem">Actual Result</div>
+          <div class="stat-value sm ${b.allInActual >= 0 ? 'green' : 'red'}">+€${b.allInActual.toFixed(1)}</div>
+        </div>
+        <div>
+          <div style="font-size:0.65rem;color:var(--cream3);margin-bottom:0.2rem">Variance</div>
+          <div class="stat-value sm ${diff > 0 ? 'amber' : 'green'}">${diff > 0 ? '-' : '+'}€${Math.abs(diff).toFixed(1)}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+/* ══════════════════════════════════════════════════════
+   BUILD HAND STRENGTH
+══════════════════════════════════════════════════════ */
+function buildHandStrength() {
+  const hs = STATS.handStrength;
+
+  // Starting hand bars
+  const hbEl = document.getElementById('hand-bars');
+  hbEl.innerHTML = Object.entries(hs.startingHands).map(([name, d]) => {
+    const wrCls = color(d.winRate, 50, 30);
+    return `
+    <div class="hand-row">
+      <span class="hand-name">${name}</span>
+      <div class="hand-bar-wrap"><div class="hand-bar-fill" style="width:0%" data-target="${Math.min(100,d.freq*3)}%"></div></div>
+      <span class="hand-freq">${pct(d.freq)}</span>
+      <span class="hand-wr ${wrCls}">${pct(d.winRate)}</span>
+    </div>`;
+  }).join('');
+
+  // Category table
+  const catEl = document.getElementById('hand-category-table');
+  const catColors = { premium: 'gold', strong: 'green', speculative: 'amber', marginal: 'red' };
+  catEl.innerHTML = `
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Category</th>
+        <th data-tip="How often this hand category appears in your dealt hands">Freq %</th>
+        <th data-tip="% of hands won overall when you play this category">Win Rate</th>
+        <th data-tip="% of showdowns won with this hand category">SD Win%</th>
+        <th data-tip="Went to Showdown % — how often you reach showdown with this hand. Premium hands should be 60%+.">WTSD %</th>
+      </tr>
+    </thead>
+    <tbody>
+    ${Object.entries(hs.categories).map(([cat, d]) => {
+      const cls = catColors[cat] || 'amber';
+      // WTSD leak: premium/strong should be high (going to showdown), marginal/speculative should be lower
+      const wtsdTarget = cat === 'premium' ? [60, 40] : cat === 'strong' ? [50, 30] : cat === 'speculative' ? [35, 15] : [30, 10];
+      const wtsdCls = d.wtsd >= wtsdTarget[0] ? 'green' : d.wtsd >= wtsdTarget[1] ? 'amber' : 'red';
+      return `
+      <tr>
+        <td class="label"><span class="pill ${cls}">${cat.charAt(0).toUpperCase()+cat.slice(1)}</span></td>
+        <td>${pct(d.freq)}</td>
+        <td><span class="pill ${color(d.winRate,55,35)}">${pct(d.winRate)}</span></td>
+        <td><span class="pill ${color(d.showdownWR,65,45)}">${pct(d.showdownWR)}</span></td>
+        <td><span class="pill ${wtsdCls}">${pct(d.wtsd)}</span></td>
+      </tr>`;
+    }).join('')}
+    </tbody>
+  </table>`;
+}
+
+/* ══════════════════════════════════════════════════════
+   COLLAPSIBLE SECTIONS
+══════════════════════════════════════════════════════ */
+function setupSections() {
+  document.querySelectorAll('.section-header').forEach(header => {
+    header.addEventListener('click', () => {
+      const id = 'section-' + header.dataset.section;
+      const body = document.getElementById(id);
+      const isOpen = body.classList.contains('open');
+      body.classList.toggle('open', !isOpen);
+      header.classList.toggle('open', !isOpen);
+    });
+  });
+}
+
+/* ══════════════════════════════════════════════════════
+   ALSO RE-ANIMATE WHEN SECTIONS OPEN
+══════════════════════════════════════════════════════ */
+function animateBars() {
+  document.querySelectorAll('.hand-bar-fill[data-target], .stat-bar-fill[data-target]').forEach(el => {
+    el.style.width = el.dataset.target;
+  });
+}
+
+/* ══════════════════════════════════════════════════════
+   INIT
+══════════════════════════════════════════════════════ */
+buildLeaks();
+buildSession();
+buildPreflop();
+buildPositional();
+buildPostflop();
+buildBetSizing();
+buildHandStrength();
+setupSections();
+
+setTimeout(() => {
+  animateCounters();
+  animateBars();
+}, 120);
+</script>
+</body>
+</html>
