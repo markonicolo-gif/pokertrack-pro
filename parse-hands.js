@@ -142,7 +142,7 @@ async function parseXMLSession(text) {
     hands: games.length,
     showdownWin,
     nonShowdownWin,
-    notes: `${games.length} hands · ${currency} · rake €${totalRake}`,
+    notes: `${games.length} hands · ${currency} · rake ${totalRake}`,
   };
 }
 
