@@ -64,7 +64,8 @@ async function parseXMLSession(text) {
   }
   if (!buyIn) buyIn = bets;
 
-  const cashOut = Math.max(0, Math.round((buyIn + (wins - bets)) * 100) / 100);
+  // cashOut = buyIn + session P&L (no clipping — preserves authoritative P&L)
+  const cashOut = Math.round((buyIn + (wins - bets)) * 100) / 100;
   buyIn = Math.round(buyIn * 100) / 100;
 
   let duration = 0;
@@ -81,7 +82,13 @@ async function parseXMLSession(text) {
   if (!duration) duration = Math.max(0.25, Math.round(games.length / 30 * 4) / 4);
 
   let totalRake = 0, showdownWin = 0, nonShowdownWin = 0;
+  // Session-level P&L is authoritative (no uncalled-bet accounting errors)
+  const sessionPnL = Math.round((wins - bets) * 100) / 100;
+
   if (nickname) {
+    let sdHandCount = 0, nsdHandCount = 0;
+    let sdPotWeight = 0, nsdPotWeight = 0;
+
     for (let g = 0; g < games.length; g++) {
       const players = games[g].getElementsByTagName('player');
       let p = null;
@@ -90,21 +97,34 @@ async function parseXMLSession(text) {
       }
       if (!p) continue;
       totalRake += parseAmt(p.getAttribute('rakeamount') || '0');
-      const win = parseAmt(p.getAttribute('win') || '0');
-      const bet = parseAmt(p.getAttribute('bet') || '0');
-      const net = win - bet;
-      const rounds = games[g].getElementsByTagName('round');
-      let hasShowdown = false;
-      for (let r = 0; r < rounds.length; r++) {
-        if (rounds[r].getAttribute('id') === 'showdown') { hasShowdown = true; break; }
+
+      const playerBet = parseAmt(p.getAttribute('bet') || '0');
+
+      // iPoker XML showdown detection: muck="0" means the player showed cards.
+      // A hand went to showdown if 2+ players have muck="0".
+      let muckZeroCount = 0;
+      for (let i = 0; i < players.length; i++) {
+        if (players[i].getAttribute('muck') === '0') muckZeroCount++;
       }
-      if (hasShowdown) showdownWin += net;
-      else nonShowdownWin += net;
+      const hasShowdown = muckZeroCount >= 2;
+
+      // Weight by how much money the player put in this hand (their action size).
+      // This gives a fair split: big pots count more than min-bet folds.
+      const weight = Math.max(playerBet, 0.01); // small floor so even checked hands count
+      if (hasShowdown) { sdHandCount++; sdPotWeight += weight; }
+      else { nsdHandCount++; nsdPotWeight += weight; }
+    }
+
+    // Split session P&L proportionally by pot-weighted action
+    const totalWeight = sdPotWeight + nsdPotWeight;
+    if (totalWeight > 0) {
+      showdownWin = Math.round(sessionPnL * (sdPotWeight / totalWeight) * 100) / 100;
+      nonShowdownWin = Math.round((sessionPnL - showdownWin) * 100) / 100;
+    } else {
+      nonShowdownWin = sessionPnL;
     }
   }
   totalRake = Math.round(totalRake * 100) / 100;
-  showdownWin = Math.round(showdownWin * 100) / 100;
-  nonShowdownWin = Math.round(nonShowdownWin * 100) / 100;
 
   return {
     id: require('crypto').randomUUID(),
