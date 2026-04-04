@@ -48996,7 +48996,7 @@ function fmt(v, sign = true) {
 function fmtHr(v) { return (v >= 0 ? '+' : '-') + Math.abs(v).toFixed(2) + '/hr'; }
 function cls(v) { return v > 0 ? 'positive' : v < 0 ? 'negative' : ''; }
 function pill(v) { return `<span class="profit-pill ${v >= 0 ? 'pos' : 'neg'}">${fmt(v)}</span>`; }
-function moodEmoji(m) { return ['ðŸ˜´','ðŸ˜','ðŸ™‚','ðŸ˜Š','ðŸ”¥'][m - 1] || 'ðŸ™‚'; }
+function moodEmoji(m) { return ['😴','😐','🙂','😊','🔥'][m - 1] || '🙂'; }
 
 function calcStats(sessions) {
   if (!sessions.length) return null;
@@ -49084,7 +49084,7 @@ function updateLiveBadge() {
   if (live) {
     badge.classList.add('active');
     const elapsed = Math.floor((Date.now() - live.startTime) / 1000);
-    label.textContent = 'â— LIVE ' + fmtTimer(elapsed);
+    label.textContent = '● LIVE ' + fmtTimer(elapsed);
   } else {
     badge.classList.remove('active');
     label.textContent = 'No Live Session';
@@ -49120,7 +49120,7 @@ function renderDashboard(container) {
 
   let streakHtml = '';
   if (stats && stats.streak > 0) {
-    streakHtml = `<span class="streak-badge ${stats.streakType}">${stats.streakType === 'win' ? 'ðŸ”¥' : 'â„ï¸'} ${stats.streak}-${stats.streakType === 'win' ? 'Win' : 'Loss'} Streak</span>`;
+    streakHtml = `<span class="streak-badge ${stats.streakType}">${stats.streakType === 'win' ? '🔥' : '❄️'} ${stats.streak}-${stats.streakType === 'win' ? 'Win' : 'Loss'} Streak</span>`;
   }
 
   container.innerHTML = `
@@ -49166,7 +49166,7 @@ function renderDashboard(container) {
           <div class="card-title-lg">Recent Sessions</div>
           <button class="btn btn-primary btn-sm" onclick="switchView('sessions')">+ Add</button>
         </div>
-        ${recent.length === 0 ? `<div class="empty-state"><div class="empty-icon">ðŸƒ</div><div class="empty-title">No sessions yet</div><div class="empty-sub">Log your first session to get started</div></div>` :
+        ${recent.length === 0 ? `<div class="empty-state"><div class="empty-icon">🃏</div><div class="empty-title">No sessions yet</div><div class="empty-sub">Log your first session to get started</div></div>` :
           recent.map(s => {
             const p = s.cashOut - s.buyIn;
             return `<div class="recent-session">
@@ -49284,7 +49284,7 @@ function buildSessionForm(session, locations) {
   const isEdit = !!session;
   const today = new Date().toISOString().slice(0,10);
   const locs = locations || [...new Set(getSessions().map(s => s.location).filter(Boolean))];
-  const moodEmojis = ['ðŸ˜´','ðŸ˜','ðŸ™‚','ðŸ˜Š','ðŸ”¥'];
+  const moodEmojis = ['😴','😐','🙂','😊','🔥'];
   const m = session ? (session.mood || 3) : 3;
   const t = session ? (session.tags ? session.tags.split(',').filter(Boolean) : []) : [];
 
@@ -49354,7 +49354,7 @@ function buildSessionForm(session, locations) {
 }
 
 function renderEmptyState() {
-  return `<div class="empty-state"><div class="empty-icon">ðŸƒ</div><div class="empty-title">No sessions yet</div><div class="empty-sub">Log your first session using the form above</div></div>`;
+  return `<div class="empty-state"><div class="empty-icon">🃏</div><div class="empty-title">No sessions yet</div><div class="empty-sub">Log your first session using the form above</div></div>`;
 }
 
 function renderTable(sessions, search = '') {
@@ -49379,7 +49379,7 @@ function renderTable(sessions, search = '') {
     { key: 'profit', label: 'Profit' }, { key: 'duration', label: 'Hours' },
     { key: 'hourly', label: '$/hr' },
   ];
-  const arrow = k => sortCol === k ? (sortAsc ? ' â–²' : ' â–¼') : '';
+  const arrow = k => sortCol === k ? (sortAsc ? ' ▲' : ' ▼') : '';
 
   if (sorted.length === 0) return `<div class="empty-state" style="padding:2rem"><div class="empty-sub">No sessions match your search</div></div>`;
 
@@ -49468,7 +49468,7 @@ function renderTable(sessions, search = '') {
             <th colspan="11" class="day-group-th">
               <div class="day-group-row">
                 <div class="day-group-left">
-                  <span class="day-toggle">${isOpen ? 'â–¼' : 'â–¶'}</span>
+                  <span class="day-toggle">${isOpen ? '▼' : '▶'}</span>
                   <span class="day-date">${label}</span>
                   <span class="day-count">${grpSessions.length} session${grpSessions.length > 1 ? 's' : ''}</span>
                 </div>
@@ -49773,12 +49773,12 @@ function bindSessionEvents(container) {
   dropZone.addEventListener('click', () => csvInput.click());
   csvInput.addEventListener('change', (e) => handleImportFile(e.target.files[0]));
 
-  dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); dropLabel.textContent = 'ðŸ“‚ Drop here'; });
-  dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('drag-over'); dropLabel.textContent = 'â¬† Import CSV'; });
+  dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); dropLabel.textContent = '📂 Drop here'; });
+  dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('drag-over'); dropLabel.textContent = '⬆ Import CSV'; });
   dropZone.addEventListener('drop', (e) => {
     e.preventDefault();
     dropZone.classList.remove('drag-over');
-    dropLabel.textContent = 'â¬† Import CSV';
+    dropLabel.textContent = '⬆ Import CSV';
     handleImportFile(e.dataTransfer.files[0]);
   });
   container.querySelector('#export-btn').addEventListener('click', () => exportToCSV(getSessions()));
@@ -49979,7 +49979,7 @@ function renderAnalyticsStats(el, sessions) {
     ${statCard('Total Invested', s.totalBuyIn.toLocaleString(), 'neutral', '&#128180;', 'purple', 'total buy-ins')}
     ${statCard('ROI', s.roi + '%', cls(parseFloat(s.roi)), '&#128200;', parseFloat(s.roi) >= 0 ? 'green' : 'red', 'return on investment')}
     ${s.bbhr !== null ? statCard('BB/hr', s.bbhr.toFixed(1), cls(s.bbhr), '&#127183;', 'blue', 'big blinds / hour') : ''}
-    ${statCard('Streak', s.streak > 0 ? s.streak + '-' + (s.streakType === 'win' ? 'Win ðŸ”¥' : 'Loss â„ï¸') : '-', s.streakType === 'win' ? 'positive' : s.streakType === 'loss' ? 'negative' : '', '&#9889;', s.streakType === 'win' ? 'green' : 'red', 'current streak')}
+    ${statCard('Streak', s.streak > 0 ? s.streak + '-' + (s.streakType === 'win' ? 'Win 🔥' : 'Loss ❄️') : '-', s.streakType === 'win' ? 'positive' : s.streakType === 'loss' ? 'negative' : '', '&#9889;', s.streakType === 'win' ? 'green' : 'red', 'current streak')}
     ${statCard('Total Rake Paid', '-' + s.totalRake.toFixed(2), 'negative', '&#127968;', 'red', s.totalHands > 0 ? s.totalHands + ' hands' : 'all sessions')}
     ${statCard('Rake / Hour', '-' + s.rakePerHour.toFixed(2) + '/hr', 'negative', '&#9201;', 'red', 'cost of playing')}
     ${statCard('Gross Profit', fmt(s.grossProfit), cls(s.grossProfit), '&#128173;', s.grossProfit >= 0 ? 'green' : 'red', 'before rake')}
@@ -50226,7 +50226,7 @@ function renderLiveView(container) {
   container.innerHTML = `
     <div class="live-layout">
       <div class="live-timer-card">
-        <div class="timer-label">${live ? 'â— LIVE SESSION IN PROGRESS' : 'START A NEW SESSION'}</div>
+        <div class="timer-label">${live ? '● LIVE SESSION IN PROGRESS' : 'START A NEW SESSION'}</div>
         <div class="timer-display" id="timer-display">${live ? fmtTimer(Math.floor((Date.now() - live.startTime) / 1000)) : '00:00:00'}</div>
         <div class="live-stats-row" style="margin-bottom:1.5rem">
           <div class="live-stat">
@@ -50250,7 +50250,7 @@ function renderLiveView(container) {
         ${live ? `
           <div style="display:flex;gap:0.75rem;justify-content:center;flex-wrap:wrap;margin-bottom:1rem">
             <button class="btn btn-secondary" id="addon-btn">+ Add-on / Rebuy</button>
-            <button class="btn btn-gold" id="end-btn">â¹ End Session</button>
+            <button class="btn btn-gold" id="end-btn">⏹ End Session</button>
           </div>
         ` : `
           <div style="max-width:400px;margin:0 auto">
@@ -50387,7 +50387,7 @@ function renderGoalsView(container) {
         <div class="goal-header">
           <div>
             <div class="goal-title">${title}</div>
-            <div class="goal-meta">${overshoot ? 'ðŸŽ‰ Goal achieved!' : `${(target - current).toFixed(0)} ${unit} remaining`}</div>
+            <div class="goal-meta">${overshoot ? '🎉 Goal achieved!' : `${(target - current).toFixed(0)} ${unit} remaining`}</div>
           </div>
           <div class="goal-right">
             <div class="goal-pct" style="color:${fill}">${pct.toFixed(0)}%</div>
@@ -50411,7 +50411,7 @@ function renderGoalsView(container) {
     ${goalBlock('Yearly Sessions Goal', yearlySessions, goals.yearlySessions, 'sessions', 'var(--gold)')}
 
     ${!goals.monthly && !goals.yearly && !goals.monthlyHours && !goals.yearlySessions
-      ? `<div class="empty-state"><div class="empty-icon">ðŸŽ¯</div><div class="empty-title">No goals set</div><div class="empty-sub">Set your goals below to track your progress</div></div>`
+      ? `<div class="empty-state"><div class="empty-icon">🎯</div><div class="empty-title">No goals set</div><div class="empty-sub">Set your goals below to track your progress</div></div>`
       : ''}
 
     <div class="section-title" style="margin-top:1.5rem">Set Goals</div>
@@ -50489,7 +50489,7 @@ function detectLeaks(sessions) {
         leaks.push({
           id: 'duration', severity: lAvg < sAvg - 120 ? 'critical' : 'warning',
           title: 'Performance Drops in Long Sessions',
-          icon: 'â³',
+          icon: '⏳',
           description: `Sessions under 3h avg ${fmtA(sAvg)}, sessions over 3h avg ${fmtA(lAvg)}. You play worse when fatigued.`,
           data: [
             { label: 'Short sessions (â‰¤3h)', value: fmtA(sAvg), count: short.length, positive: sAvg >= 0 },
@@ -50512,11 +50512,11 @@ function detectLeaks(sessions) {
         leaks.push({
           id: 'mood', severity: bAvg < gAvg - 100 ? 'critical' : 'warning',
           title: 'Playing Below Optimal Mental State',
-          icon: 'ðŸ§ ',
-          description: `You average ${fmtA(bAvg)} when mood is ðŸ˜´ðŸ˜ vs ${fmtA(gAvg)} when feeling ðŸ˜ŠðŸ”¥. Emotional state is hurting your game.`,
+          icon: '🧠',
+          description: `You average ${fmtA(bAvg)} when mood is 😴😐 vs ${fmtA(gAvg)} when feeling 😊🔥. Emotional state is hurting your game.`,
           data: [
-            { label: 'Poor mood (ðŸ˜´ðŸ˜)', value: fmtA(bAvg), count: bad.length,  positive: bAvg >= 0 },
-            { label: 'Good mood (ðŸ˜ŠðŸ”¥)', value: fmtA(gAvg), count: good.length, positive: gAvg >= 0 },
+            { label: 'Poor mood (😴😐)', value: fmtA(bAvg), count: bad.length,  positive: bAvg >= 0 },
+            { label: 'Good mood (😊🔥)', value: fmtA(gAvg), count: good.length, positive: gAvg >= 0 },
           ],
           fix: 'Create a pre-session checklist: slept 7h+, not stressed, not hungry. If any fail — don\'t play.',
         });
@@ -50537,7 +50537,7 @@ function detectLeaks(sessions) {
     leaks.push({
       id: 'dow', severity: worst.avg < -150 ? 'critical' : 'warning',
       title: `Consistent Losses on ${worst.day}days`,
-      icon: 'ðŸ“…',
+      icon: '📅',
       description: `You average ${fmtA(worst.avg)} on ${worst.day}s over ${worst.arr.length} sessions. Something about this day hurts your game.`,
       data: badDays.slice(0, 4).map(d => ({ label: d.day + 's', value: fmtA(d.avg), count: d.arr.length, positive: false })),
       fix: `Avoid playing on ${badDays.map(d => d.day + 's').join(', ')}. If you must, play shorter sessions with a strict stop-loss.`,
@@ -50556,7 +50556,7 @@ function detectLeaks(sessions) {
     leaks.push({
       id: 'tilt', severity: tiltCount >= 4 ? 'critical' : 'warning',
       title: 'Tilt / Loss Chasing Detected',
-      icon: 'ðŸ”¥',
+      icon: '🔥',
       description: `${tiltCount} times you played the same or next day after a big losing session — and lost again. Total extra losses: ${fmtA(tiltLoss)}.`,
       data: [
         { label: 'Back-to-back loss sessions', value: tiltCount + 'x', count: tiltCount, positive: false },
@@ -50573,7 +50573,7 @@ function detectLeaks(sessions) {
     leaks.push({
       id: 'winrate', severity: wr < 0.3 ? 'critical' : 'warning',
       title: 'Below-Average Win Rate',
-      icon: 'ðŸ“Š',
+      icon: '📊',
       description: `Win rate of ${(wr * 100).toFixed(0)}% is below the typical 45-55% for a winning player. You\'re losing more sessions than you should.`,
       data: [
         { label: 'Win rate', value: (wr * 100).toFixed(0) + '%', count: sessions.length, positive: false },
@@ -50592,7 +50592,7 @@ function detectLeaks(sessions) {
     leaks.push({
       id: 'rake', severity: 'critical',
       title: 'Rake is Costing You Your Profits',
-      icon: 'ðŸ¦',
+      icon: '🏦',
       description: `Without rake you\'d be profitable (${fmtA(grossProfit)}), but rake of ${totalRake.toFixed(2)} puts you in the red. You need a higher edge to beat the rake.`,
       data: [
         { label: 'Gross profit (before rake)', value: fmtA(grossProfit),     positive: true },
@@ -50622,7 +50622,7 @@ function detectLeaks(sessions) {
         leaks.push({
           id: 'stakes', severity: high.avg < -100 ? 'critical' : 'warning',
           title: 'Losing at Higher Stakes',
-          icon: 'ðŸ“ˆ',
+          icon: '📈',
           description: `You average ${fmtA(low.avg)} at ${low.bb} BB stakes but ${fmtA(high.avg)} at ${high.bb} BB. Your skill edge doesn\'t cover the higher stakes yet.`,
           data: [
             { label: `Stakes ${low.bb} BB`,  value: fmtA(low.avg),  count: low.count,  positive: low.avg >= 0 },
@@ -50645,7 +50645,7 @@ function detectLeaks(sessions) {
         leaks.push({
           id: 'buyin', severity: 'warning',
           title: 'Short Buy-in Underperformance',
-          icon: 'ðŸ’¸',
+          icon: '💸',
           description: `Sessions where you bought in for less than usual (avg ${avgBI.toFixed(0)}) perform significantly worse.`,
           data: [
             { label: 'Short buy-in sessions', value: fmtA(sAvg), count: short.length, positive: sAvg >= 0 },
@@ -50667,7 +50667,7 @@ function detectLeaks(sessions) {
       leaks.push({
         id: 'variance', severity: 'warning',
         title: 'Extremely High Variance',
-        icon: 'ðŸŽ¢',
+        icon: '🎢',
         description: `Your results swing wildly (std dev ${stdDev.toFixed(0)}). Very high variance can mask whether you\'re actually winning or losing long-term.`,
         data: [
           { label: 'Biggest win',  value: fmtA(Math.max(...profits)), positive: true },
@@ -50690,7 +50690,7 @@ function detectLeaks(sessions) {
       leaks.push({
         id: 'location', severity: 'warning',
         title: `Losing at ${worst.loc}`,
-        icon: 'ðŸ“',
+        icon: '📍',
         description: `You average ${fmtA(worst.avg)} at ${worst.loc} vs ${fmtA(best.avg)} at ${best.loc}. One venue is consistently hurting your results.`,
         data: locList.sort((a, b) => b.avg - a.avg).slice(0, 4).map(d => ({ label: d.loc, value: fmtA(d.avg), count: d.count, positive: d.avg >= 0 })),
         fix: `Play less at ${worst.loc} or look for better game conditions there (softer tables, different time of day).`,
@@ -50790,7 +50790,7 @@ function renderPlayerStatsView(container) {
       <!-- Stakes + Monthly P&L -->
       <div class="ps-grid-2">
         <div class="ps-card">
-          <div class="ps-card-title">ðŸ’° P&L by Stakes</div>
+          <div class="ps-card-title">💰 P&L by Stakes</div>
           <table class="ps-table">
             <thead><tr><th>Stake</th><th>Hands</th><th>P&L</th><th>bb/100</th></tr></thead>
             <tbody>
@@ -50804,7 +50804,7 @@ function renderPlayerStatsView(container) {
           </table>
         </div>
         <div class="ps-card">
-          <div class="ps-card-title">ðŸ“… P&L by Month</div>
+          <div class="ps-card-title">📅 P&L by Month</div>
           <table class="ps-table">
             <thead><tr><th>Month</th><th>Hands</th><th>P&L</th><th>bb/100</th></tr></thead>
             <tbody>
@@ -50821,9 +50821,9 @@ function renderPlayerStatsView(container) {
 
       <!-- Strengths -->
       <div class="ps-card">
-        <div class="ps-card-title">âœ… Strengths</div>
+        <div class="ps-card-title">✅ Strengths</div>
         <div class="ps-strength-list">
-          ${d.strengths.map(s => `<div class="ps-strength-item"><div class="ps-strength-icon">âœ“</div><div>${s}</div></div>`).join('')}
+          ${d.strengths.map(s => `<div class="ps-strength-item"><div class="ps-strength-icon">✓</div><div>${s}</div></div>`).join('')}
         </div>
       </div>
     `;
@@ -50833,7 +50833,7 @@ function renderPlayerStatsView(container) {
     const preflopHTML = `
       <!-- Overall preflop bars vs GTO -->
       <div class="ps-card">
-        <div class="ps-card-title">ðŸ“Š Overall Preflop Stats vs GTO Range</div>
+        <div class="ps-card-title">📊 Overall Preflop Stats vs GTO Range</div>
         <div style="font-size:0.7rem;color:var(--text3);margin-bottom:0.75rem">Dashed area = GTO range · Green = in range · Gold = below · Red = above</div>
         ${gtoBar('VPIP', pre.vpip_pct, [28,36], 60, 'var(--purple)')}
         ${gtoBar('PFR', pre.pfr_pct, [20,28], 60, 'var(--blue)')}
@@ -50846,7 +50846,7 @@ function renderPlayerStatsView(container) {
 
       <!-- Positional breakdown -->
       <div class="ps-card">
-        <div class="ps-card-title">ðŸŽ¯ Preflop Stats by Position</div>
+        <div class="ps-card-title">🎯 Preflop Stats by Position</div>
         <table class="ps-table">
           <thead><tr><th>Pos</th><th>Hands</th><th>VPIP</th><th>PFR</th><th>3-Bet</th><th>Open</th><th>Limp</th><th>bb/100</th></tr></thead>
           <tbody>
@@ -50868,7 +50868,7 @@ function renderPlayerStatsView(container) {
             }).join('')}
           </tbody>
         </table>
-        <div style="font-size:0.7rem;color:var(--text3);margin-top:0.6rem">Color: <span style="color:var(--green)">â– </span> in GTO range · <span style="color:var(--gold)">â– </span> below GTO · <span style="color:var(--red)">â– </span> above GTO</div>
+        <div style="font-size:0.7rem;color:var(--text3);margin-top:0.6rem">Color: <span style="color:var(--green)">■</span> in GTO range · <span style="color:var(--gold)">■</span> below GTO · <span style="color:var(--red)">■</span> above GTO</div>
       </div>
     `;
 
@@ -50877,7 +50877,7 @@ function renderPlayerStatsView(container) {
     const ab = post.aggression_breakdown;
     const postflopHTML = `
       <div class="ps-card">
-        <div class="ps-card-title">ðŸ“Š Postflop Stats vs GTO Range</div>
+        <div class="ps-card-title">📊 Postflop Stats vs GTO Range</div>
         <div style="font-size:0.7rem;color:var(--text3);margin-bottom:0.75rem">Based on ${post.flops_seen.toLocaleString()} flops seen</div>
         ${gtoBar('C-bet Flop', post.cbet_flop_pct, gtoPost.cbet_flop, 80)}
         ${gtoBar('C-bet Turn', post.cbet_turn_pct, gtoPost.cbet_turn, 80)}
@@ -50890,21 +50890,21 @@ function renderPlayerStatsView(container) {
 
       <div class="ps-grid-2">
         <div class="ps-card">
-          <div class="ps-card-title">âš¡ Aggression Factor: ${post.aggression_factor}</div>
+          <div class="ps-card-title">⚡ Aggression Factor: ${post.aggression_factor}</div>
           <div style="font-size:0.8rem;color:var(--text2);margin-bottom:0.75rem">GTO range: ${gtoPost.aggression_factor[0]} — ${gtoPost.aggression_factor[1]}</div>
           <table class="ps-table">
             <thead><tr><th>Street</th><th>Bets</th><th>Raises</th><th>Calls</th><th>AF</th></tr></thead>
             <tbody>
               ${['flop','turn','river'].map(st => {
                 const s = ab[st];
-                const af = s.calls > 0 ? ((s.bets + s.raises) / s.calls).toFixed(2) : 'âˆž';
+                const af = s.calls > 0 ? ((s.bets + s.raises) / s.calls).toFixed(2) : '∞';
                 return `<tr><td class="ps-pos" style="text-transform:capitalize">${st}</td><td>${s.bets.toLocaleString()}</td><td>${s.raises.toLocaleString()}</td><td>${s.calls.toLocaleString()}</td><td style="font-weight:700">${af}</td></tr>`;
               }).join('')}
             </tbody>
           </table>
         </div>
         <div class="ps-card">
-          <div class="ps-card-title">ðŸŽ² Showdown Summary</div>
+          <div class="ps-card-title">🎲 Showdown Summary</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:0.5rem">
             <div><div class="ps-hero-label">WTSD %</div><div class="ps-hero-val" style="font-size:1.3rem;color:var(--green)">${post.wtsd_pct}%</div><div class="ps-hero-sub">GTO: ${gtoPost.wtsd[0]}—${gtoPost.wtsd[1]}%</div></div>
             <div><div class="ps-hero-label">W$SD %</div><div class="ps-hero-val" style="font-size:1.3rem;color:var(--green)">${post.wsd_pct}%</div><div class="ps-hero-sub">GTO: ${gtoPost.wsd[0]}—${gtoPost.wsd[1]}%</div></div>
@@ -50915,7 +50915,7 @@ function renderPlayerStatsView(container) {
 
     // ===== LEAKS TAB =====
     const sevOrder = {critical:0,major:1,minor:2};
-    const sevIcon = {critical:'ðŸ”´',major:'ðŸŸ¡',minor:'ðŸ”µ'};
+    const sevIcon = {critical:'🔴',major:'🟡',minor:'🔵'};
     const leaksHTML = `
       ${d.leak_analysis.sort((a,b) => sevOrder[a.severity] - sevOrder[b.severity]).map(l => `
         <div class="ps-leak-card ${l.severity}">
@@ -50929,7 +50929,7 @@ function renderPlayerStatsView(container) {
               <div class="ps-leak-v">GTO range: <span style="color:var(--green)">${l.gto_range[0]} — ${l.gto_range[1]}</span></div>
             </div>
             <div style="margin-bottom:0.35rem">${l.impact}</div>
-            <div class="ps-leak-fix">ðŸ’¡ ${l.fix}</div>
+            <div class="ps-leak-fix">💡 ${l.fix}</div>
           </div>
         </div>
       `).join('')}
@@ -50947,7 +50947,7 @@ function renderPlayerStatsView(container) {
               <div class="ps-opp-type" style="background:${typeColors[o.type] || 'var(--card2)'};color:${typeTextColors[o.type] || 'var(--text2)'}">${o.type}</div>
             </div>
             <div class="ps-opp-stat">${o.hands.toLocaleString()} hands · VPIP ${o.vpip}% · PFR ${o.pfr}% · AF ${o.af}</div>
-            <div class="ps-opp-exploit">ðŸŽ¯ ${o.exploit}</div>
+            <div class="ps-opp-exploit">🎯 ${o.exploit}</div>
           </div>
         `).join('')}
       </div>
@@ -50957,7 +50957,7 @@ function renderPlayerStatsView(container) {
     const confDot = (v) => v.startsWith('HIGH') ? 'high' : v.startsWith('MEDIUM') ? 'medium' : 'approx';
     const confHTML = `
       <div class="ps-card">
-        <div class="ps-card-title">ðŸ”’ Data Confidence Levels</div>
+        <div class="ps-card-title">🔒 Data Confidence Levels</div>
         ${Object.entries(d.confidence_levels).map(([k, v]) => `
           <div class="ps-conf-row">
             <div class="ps-conf-dot ${confDot(v)}"></div>
@@ -50967,7 +50967,7 @@ function renderPlayerStatsView(container) {
         `).join('')}
       </div>
       <div class="ps-card" style="margin-top:0.5rem">
-        <div class="ps-card-title">ðŸ“ Notes</div>
+        <div class="ps-card-title">📝 Notes</div>
         <div style="font-size:0.8rem;color:var(--text2);line-height:1.7">
           <div style="margin-bottom:0.5rem"><strong style="color:var(--text)">P&L:</strong> ${m.notes.pnl}</div>
           <div style="margin-bottom:0.5rem"><strong style="color:var(--text)">Strategy Stats:</strong> ${m.notes.strategy_stats}</div>
@@ -50977,12 +50977,12 @@ function renderPlayerStatsView(container) {
     `;
 
     const tabs = [
-      {id:'overview', label:'Overview', icon:'ðŸ“‹'},
-      {id:'preflop', label:'Preflop', icon:'ðŸƒ'},
-      {id:'postflop', label:'Postflop', icon:'ðŸŽ°'},
-      {id:'leaks', label:'Leaks', icon:'ðŸ”'},
-      {id:'opponents', label:'Opponents', icon:'ðŸ‘¥'},
-      {id:'confidence', label:'Confidence', icon:'ðŸ”’'}
+      {id:'overview', label:'Overview', icon:'📋'},
+      {id:'preflop', label:'Preflop', icon:'🃏'},
+      {id:'postflop', label:'Postflop', icon:'🎰'},
+      {id:'leaks', label:'Leaks', icon:'🔍'},
+      {id:'opponents', label:'Opponents', icon:'👥'},
+      {id:'confidence', label:'Confidence', icon:'🔒'}
     ];
 
     const tabContent = {
@@ -50998,11 +50998,11 @@ function renderPlayerStatsView(container) {
       <div class="ps-layout">
         <!-- Metadata -->
         <div class="ps-meta-bar">
-          <div class="ps-meta-chip"><span class="mc-icon">ðŸ‘¤</span> ${m.player}</div>
-          <div class="ps-meta-chip"><span class="mc-icon">ðŸŒ</span> ${m.platform}</div>
-          <div class="ps-meta-chip"><span class="mc-icon">ðŸƒ</span> ${m.game}</div>
-          <div class="ps-meta-chip"><span class="mc-icon">ðŸ“…</span> ${m.period}</div>
-          <div class="ps-meta-chip"><span class="mc-icon">ðŸ’¶</span> ${m.currency}</div>
+          <div class="ps-meta-chip"><span class="mc-icon">👤</span> ${m.player}</div>
+          <div class="ps-meta-chip"><span class="mc-icon">🌐</span> ${m.platform}</div>
+          <div class="ps-meta-chip"><span class="mc-icon">🃏</span> ${m.game}</div>
+          <div class="ps-meta-chip"><span class="mc-icon">📅</span> ${m.period}</div>
+          <div class="ps-meta-chip"><span class="mc-icon">💶</span> ${m.currency}</div>
         </div>
 
         <!-- Tabs -->
@@ -51038,14 +51038,14 @@ function renderLeakFinderView(container) {
 
   const sevColor = { critical: 'var(--red)', warning: 'var(--gold)', good: 'var(--green)' };
   const sevBg    = { critical: 'var(--red-dim)', warning: 'var(--gold-dim)', good: 'var(--green-dim)' };
-  const sevLabel = { critical: 'ðŸ”´ Critical', warning: 'ðŸŸ¡ Warning', good: 'ðŸŸ¢ Good' };
+  const sevLabel = { critical: '🔴 Critical', warning: '🟡 Warning', good: '🟢 Good' };
 
   container.innerHTML = `
     <div class="leak-layout">
 
       ${insufficientData ? `
         <div class="empty-state" style="padding:4rem">
-          <div class="empty-icon">ðŸ“Š</div>
+          <div class="empty-icon">📊</div>
           <div class="empty-title">Not Enough Data</div>
           <div class="empty-sub">Need at least 5 sessions for leak analysis. You have ${sessions.length}.</div>
           <button class="btn btn-primary" style="margin-top:1rem" onclick="switchView('sessions')">+ Add Sessions</button>
@@ -51074,7 +51074,7 @@ function renderLeakFinderView(container) {
             <div class="leak-summary-title">Analysis Summary</div>
             ${leaks.length === 0 ? `
               <div class="leak-item leak-good">
-                <div class="leak-icon">âœ…</div>
+                <div class="leak-icon">✅</div>
                 <div>
                   <div class="leak-title">No Major Leaks Detected</div>
                   <div class="leak-desc">Your game looks solid based on available data. Keep adding sessions for deeper insights.</div>
@@ -51119,7 +51119,7 @@ function renderLeakFinderView(container) {
               </div>
 
               <div class="leak-fix">
-                <div class="leak-fix-label">ðŸ’¡ Recommendation</div>
+                <div class="leak-fix-label">💡 Recommendation</div>
                 <div class="leak-fix-text">${l.fix}</div>
               </div>
             </div>
@@ -51127,9 +51127,9 @@ function renderLeakFinderView(container) {
         ` : ''}
 
         <div class="leak-detail-card" style="border-color:var(--green-dim)">
-          <div class="leak-detail-title" style="margin-bottom:0.75rem">ðŸ“‹ What This Analysis Covers</div>
+          <div class="leak-detail-title" style="margin-bottom:0.75rem">📋 What This Analysis Covers</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;font-size:0.82rem;color:var(--text2)">
-            ${['Session duration fatigue','Mood & mental state impact','Day-of-week patterns','Tilt & loss chasing','Win rate analysis','Rake impact on profit','Stake level performance','Buy-in size patterns','Result variance','Location performance'].map(t => `<div>âœ“ ${t}</div>`).join('')}
+            ${['Session duration fatigue','Mood & mental state impact','Day-of-week patterns','Tilt & loss chasing','Win rate analysis','Rake impact on profit','Stake level performance','Buy-in size patterns','Result variance','Location performance'].map(t => `<div>✓ ${t}</div>`).join('')}
           </div>
         </div>
       `}
@@ -51251,7 +51251,7 @@ function renderHandLoggerView(container) {
         if (info) info.innerHTML = `
           <span style="font-family:monospace;font-weight:700;color:var(--green);font-size:1.1rem">${ht}</span>
           <span style="font-size:0.78rem;color:var(--text2)">${hs.length} hands &nbsp;·&nbsp; ${((w/hs.length)*100).toFixed(0)}% win &nbsp;·&nbsp; ${pnl>=0?'+':''}${pnl.toFixed(0)} BB</span>
-          <button style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:1rem" id="hl-close-info">Ã—</button>`;
+          <button style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:1rem" id="hl-close-info">×</button>`;
         container.querySelector('#hl-close-info')?.addEventListener('click', () => { if(info) info.innerHTML=''; });
       });
     });
@@ -51261,9 +51261,9 @@ function renderHandLoggerView(container) {
   function renderHLStats(hands, stats) {
     if (!stats) return `
       <div style="text-align:center;padding:4rem 1rem;color:var(--text3)">
-        <div style="font-size:3rem;margin-bottom:1rem">â™ â™¥â™¦â™£</div>
+        <div style="font-size:3rem;margin-bottom:1rem">♠♥♦♣</div>
         <div style="font-size:1rem;color:var(--text2);margin-bottom:0.5rem">Your hand lab awaits</div>
-        <div style="font-size:0.78rem;margin-bottom:1.5rem">Log hands to unlock VPIP, PFR, 3-Bet, C-Bet, WTSD, P&amp;L curve and the 13Ã—13 matrix heatmap</div>
+        <div style="font-size:0.78rem;margin-bottom:1.5rem">Log hands to unlock VPIP, PFR, 3-Bet, C-Bet, WTSD, P&amp;L curve and the 13×13 matrix heatmap</div>
         <button class="btn btn-primary hl-tab" data-hl="add">+ Log First Hand</button>
       </div>`;
 
@@ -51289,7 +51289,7 @@ function renderHandLoggerView(container) {
       <!-- P&L Curve -->
       ${pnlData.length > 1 ? `
       <div class="card" style="margin-bottom:1rem;padding:1rem 1.25rem">
-        <div style="font-size:0.75rem;font-weight:600;color:var(--text2);margin-bottom:0.75rem">ðŸ“ˆ P&L Curve (BB)</div>
+        <div style="font-size:0.75rem;font-weight:600;color:var(--text2);margin-bottom:0.75rem">📈 P&L Curve (BB)</div>
         ${buildPnlSvg(pnlData)}
         <div style="display:flex;justify-content:space-between;margin-top:4px">
           <span style="font-size:0.65rem;color:var(--text3)">Hand #1</span>
@@ -51299,13 +51299,13 @@ function renderHandLoggerView(container) {
 
       <!-- Position chart -->
       <div class="card" style="margin-bottom:1rem;padding:1rem 1.25rem">
-        <div style="font-size:0.75rem;font-weight:600;color:var(--text2);margin-bottom:0.75rem">ðŸŽ¯ Performance by Position</div>
+        <div style="font-size:0.75rem;font-weight:600;color:var(--text2);margin-bottom:0.75rem">🎯 Performance by Position</div>
         ${buildPositionBars(hands)}
       </div>
 
       <!-- Hand Matrix -->
       <div class="card" style="padding:1rem 1.25rem">
-        <div style="font-size:0.75rem;font-weight:600;color:var(--text2);margin-bottom:0.5rem">â™  Hand Matrix Heatmap <span style="font-size:0.65rem;color:var(--text3);font-weight:400">· green = profitable · red = losing · click for details</span></div>
+        <div style="font-size:0.75rem;font-weight:600;color:var(--text2);margin-bottom:0.5rem">♠ Hand Matrix Heatmap <span style="font-size:0.65rem;color:var(--text3);font-weight:400">· green = profitable · red = losing · click for details</span></div>
         <div id="hl-hand-info" style="display:flex;align-items:center;gap:1rem;min-height:1.6rem;margin-bottom:0.5rem;padding:0.4rem 0.75rem;background:rgba(0,212,170,0.05);border-radius:6px;border:1px solid rgba(0,212,170,0.1)"></div>
         <div style="overflow-x:auto">${buildMatrix(heatmap)}</div>
         <div style="display:flex;gap:1rem;margin-top:0.5rem;justify-content:center">
@@ -51400,7 +51400,7 @@ function renderHandLoggerView(container) {
 
   /* ------ HISTORY VIEW ------ */
   function renderHLHistory(sorted) {
-    if (!sorted.length) return `<div style="text-align:center;padding:3rem;color:var(--text3)">ðŸƒ No hands recorded yet</div>`;
+    if (!sorted.length) return `<div style="text-align:center;padding:3rem;color:var(--text3)">🃏 No hands recorded yet</div>`;
     const rows = sorted.slice(0, 100).map(h => {
       const pnl = h.pnl || 0;
       const pnlCol = pnl >= 0 ? 'var(--green)' : 'var(--red)';
@@ -51414,7 +51414,7 @@ function renderHandLoggerView(container) {
         </div>
         <div style="display:flex;align-items:center;gap:0.75rem">
           <span style="font-weight:700;font-family:monospace;color:${pnlCol}">${pnl>=0?'+':''}${pnl.toFixed(0)} BB</span>
-          <button class="btn-icon hl-del" data-id="${h.id}" title="Delete">âœ•</button>
+          <button class="btn-icon hl-del" data-id="${h.id}" title="Delete">✕</button>
         </div>
       </div>`;
     }).join('');
