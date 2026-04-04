@@ -3586,7 +3586,7 @@ const GK = 'pokerGoals_v2';
 const BK = 'pokerBankroll_v2';
 const LK = 'pokerLive_v2';
 
-const DATA_VERSION = 4; // bump when SEED_SESSIONS change
+const DATA_VERSION = 5; // bump when SEED_SESSIONS change
 const DVK = 'pokerDataVersion';
 function getSessions() {
   try {
@@ -3870,24 +3870,12 @@ function calcStats(sessions) {
     if (hours > 0) bbhr = totalBB / hours;
   }
 
-  let totalRake = sessions.reduce((s, x) => s + (x.rake || 0), 0);
+  const totalRake = sessions.reduce((s, x) => s + (x.rake || 0), 0);
   const totalHands = sessions.reduce((s, x) => s + (x.hands || 0), 0);
   const rakePerHour = totalHours > 0 ? totalRake / totalHours : 0;
   const grossProfit = totalProfit + totalRake; // what you'd have won without rake
 
-  // Override with authoritative data from PLAYER_STATS_DATA if this is the full (unfiltered) session set
-  let authProfit = totalProfit;
-  let authRake = totalRake;
-  let authHands = totalHands;
-  let authGross = grossProfit;
-  if (typeof PLAYER_STATS_DATA !== 'undefined' && sessions.length >= PLAYER_STATS_DATA._metadata.total_sessions) {
-    authProfit = PLAYER_STATS_DATA.pnl_summary.total_pnl_eur;
-    authRake = PLAYER_STATS_DATA.pnl_summary.total_rake_paid_eur;
-    authHands = PLAYER_STATS_DATA._metadata.total_hands;
-    authGross = authProfit + authRake;
-  }
-
-  return { totalProfit: authProfit, totalHours, totalBuyIn, wins, losses, winRate: (wins / sessions.length * 100).toFixed(1), hourly: totalHours > 0 ? authProfit / totalHours : 0, avgSession: authProfit / sessions.length, biggestWin, biggestLoss, streak, streakType, bbhr, count: sessions.length, roi: totalBuyIn > 0 ? (authProfit / totalBuyIn * 100).toFixed(1) : 0, totalRake: authRake, totalHands: authHands, rakePerHour: totalHours > 0 ? authRake / totalHours : 0, grossProfit: authGross };
+  return { totalProfit, totalHours, totalBuyIn, wins, losses, winRate: (wins / sessions.length * 100).toFixed(1), hourly: totalHours > 0 ? totalProfit / totalHours : 0, avgSession: totalProfit / sessions.length, biggestWin, biggestLoss, streak, streakType, bbhr, count: sessions.length, roi: totalBuyIn > 0 ? (totalProfit / totalBuyIn * 100).toFixed(1) : 0, totalRake, totalHands, rakePerHour: totalHours > 0 ? totalRake / totalHours : 0, grossProfit };
 }
 
 // ===== NAVIGATION =====
@@ -5558,21 +5546,72 @@ const PLAYER_STATS_DATA = {
 
 function renderPlayerStatsView(container) {
   const d = PLAYER_STATS_DATA;
-  const m = d._metadata;
-  const pnl = d.pnl_summary;
+  const sessions = getSessions();
   const pre = d.preflop_stats_overall;
   const post = d.postflop_stats;
   const gto = d.gto_benchmarks_plo_6max;
+
+  // === DYNAMIC stats computed from actual sessions ===
+  const totalPnl = sessions.reduce((s, x) => s + (x.cashOut - x.buyIn), 0);
+  const totalHands = sessions.reduce((s, x) => s + (x.hands || 0), 0);
+  const totalRake = sessions.reduce((s, x) => s + (x.rake || 0), 0);
+  const totalSessions = sessions.length;
+
+  // Compute avg BB size from sessions
+  let totalBBWeightedHands = 0, totalHandsWithStakes = 0;
+  sessions.forEach(s => {
+    if (s.stakes && s.hands) {
+      const bb = parseFloat(s.stakes.split('/')[1]) || 0;
+      if (bb > 0) { totalBBWeightedHands += bb * s.hands; totalHandsWithStakes += s.hands; }
+    }
+  });
+  const avgBBSize = totalHandsWithStakes > 0 ? totalBBWeightedHands / totalHandsWithStakes : 0.74;
+  const bbPer100 = totalHands > 0 && avgBBSize > 0 ? (totalPnl / avgBBSize) / (totalHands / 100) : 0;
+
+  // Dynamic P&L by stakes
+  const stakeGroups = {};
+  sessions.forEach(s => {
+    if (!s.stakes) return;
+    const key = s.stakes;
+    if (!stakeGroups[key]) stakeGroups[key] = { hands: 0, pnl: 0, bb: parseFloat(s.stakes.split('/')[1]) || 1 };
+    stakeGroups[key].hands += (s.hands || 0);
+    stakeGroups[key].pnl += (s.cashOut - s.buyIn);
+  });
+  const stakeEntries = Object.entries(stakeGroups)
+    .map(([k, v]) => ({ label: k, hands: v.hands, pnl: Math.round(v.pnl * 100) / 100, bb100: v.hands > 0 && v.bb > 0 ? (v.pnl / v.bb) / (v.hands / 100) : 0 }))
+    .sort((a, b) => parseFloat(a.label.split('/')[1]) - parseFloat(b.label.split('/')[1]));
+
+  // Dynamic P&L by month
+  const monthGroups = {};
+  sessions.forEach(s => {
+    if (!s.date) return;
+    const ym = s.date.slice(0, 7); // "2025-04"
+    if (!monthGroups[ym]) monthGroups[ym] = { hands: 0, pnl: 0, bbSize: 0, bbHands: 0 };
+    monthGroups[ym].hands += (s.hands || 0);
+    monthGroups[ym].pnl += (s.cashOut - s.buyIn);
+    if (s.stakes) {
+      const bb = parseFloat(s.stakes.split('/')[1]) || 0;
+      if (bb > 0) { monthGroups[ym].bbSize += bb * (s.hands || 0); monthGroups[ym].bbHands += (s.hands || 0); }
+    }
+  });
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const monthEntries = Object.entries(monthGroups)
+    .map(([ym, v]) => {
+      const [y, mo] = ym.split('-');
+      const avgBB = v.bbHands > 0 ? v.bbSize / v.bbHands : avgBBSize;
+      return { label: monthNames[parseInt(mo) - 1] + ' ' + y, hands: v.hands, pnl: Math.round(v.pnl * 100) / 100, bb100: v.hands > 0 && avgBB > 0 ? (v.pnl / avgBB) / (v.hands / 100) : 0 };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  // Dynamic period string
+  const uniqueMonths = monthEntries.map(e => e.label);
+  const periodStr = uniqueMonths.length > 0 ? uniqueMonths.join(', ') : d._metadata.period;
 
   // Helpers
   const fmt = (n) => n >= 0 ? `+${n.toFixed(2)}` : `-${Math.abs(n).toFixed(2)}`;
   const fmtBB = (n) => (n >= 0 ? '+' : '') + n.toFixed(2);
   const cls = (n) => n >= 0 ? 'ps-positive' : 'ps-negative';
   const pctBar = (val, max) => Math.min(100, (val / max) * 100);
-
-  // Stake labels
-  const stakeLabels = {PLO_005_010:'0.05/0.10',PLO_010_020:'0.10/0.20',PLO_025_050:'0.25/0.50',PLO_050_100:'0.50/1.00',PLO_100_200:'1.00/2.00',PLO_200_400:'2.00/4.00'};
-  const monthLabels = {"2025_04_April":"April 2025","2025_05_May":"May 2025","2025_07_July":"July 2025"};
 
   // GTO bar builder
   function gtoBar(label, val, gtoRange, maxScale, color) {
@@ -5599,20 +5638,20 @@ function renderPlayerStatsView(container) {
     const overviewHTML = `
       <!-- Hero stats -->
       <div class="ps-hero-row">
-        <div class="ps-hero-card ${pnl.total_pnl_eur >= 0 ? 'green' : 'red'}">
+        <div class="ps-hero-card ${totalPnl >= 0 ? 'green' : 'red'}">
           <div class="ps-hero-label">Total P&L</div>
-          <div class="ps-hero-val" style="color:${pnl.total_pnl_eur >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(pnl.total_pnl_eur)}</div>
-          <div class="ps-hero-sub">${fmtBB(pnl.bb_per_100)} bb/100</div>
+          <div class="ps-hero-val" style="color:${totalPnl >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(totalPnl)}</div>
+          <div class="ps-hero-sub">${fmtBB(bbPer100)} bb/100</div>
         </div>
         <div class="ps-hero-card blue">
           <div class="ps-hero-label">Total Hands</div>
-          <div class="ps-hero-val" style="color:var(--blue)">${m.total_hands.toLocaleString()}</div>
-          <div class="ps-hero-sub">${m.total_sessions.toLocaleString()} sessions</div>
+          <div class="ps-hero-val" style="color:var(--blue)">${totalHands.toLocaleString()}</div>
+          <div class="ps-hero-sub">${totalSessions.toLocaleString()} sessions</div>
         </div>
         <div class="ps-hero-card gold">
           <div class="ps-hero-label">Rake Paid</div>
-          <div class="ps-hero-val" style="color:var(--gold)">${pnl.total_rake_paid_eur.toLocaleString()}</div>
-          <div class="ps-hero-sub">Avg BB: ${pnl.avg_bb_size_eur}</div>
+          <div class="ps-hero-val" style="color:var(--gold)">${totalRake.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</div>
+          <div class="ps-hero-sub">Avg BB: ${avgBBSize.toFixed(2)}</div>
         </div>
         <div class="ps-hero-card purple">
           <div class="ps-hero-label">VPIP / PFR</div>
@@ -5628,11 +5667,11 @@ function renderPlayerStatsView(container) {
           <table class="ps-table">
             <thead><tr><th>Stake</th><th>Hands</th><th>P&L</th><th>bb/100</th></tr></thead>
             <tbody>
-              ${Object.entries(d.pnl_by_stakes).map(([k, v]) => `<tr>
-                <td class="ps-pos">${stakeLabels[k] || k}</td>
+              ${stakeEntries.map(v => `<tr>
+                <td class="ps-pos">${v.label}</td>
                 <td>${v.hands.toLocaleString()}</td>
-                <td class="${cls(v.pnl_eur)}">${fmt(v.pnl_eur)}</td>
-                <td class="${cls(v.bb_per_100)}">${fmtBB(v.bb_per_100)}</td>
+                <td class="${cls(v.pnl)}">${fmt(v.pnl)}</td>
+                <td class="${cls(v.bb100)}">${fmtBB(v.bb100)}</td>
               </tr>`).join('')}
             </tbody>
           </table>
@@ -5642,11 +5681,11 @@ function renderPlayerStatsView(container) {
           <table class="ps-table">
             <thead><tr><th>Month</th><th>Hands</th><th>P&L</th><th>bb/100</th></tr></thead>
             <tbody>
-              ${Object.entries(d.pnl_by_month).map(([k, v]) => `<tr>
-                <td class="ps-pos">${monthLabels[k] || k}</td>
+              ${monthEntries.map(v => `<tr>
+                <td class="ps-pos">${v.label}</td>
                 <td>${v.hands.toLocaleString()}</td>
-                <td class="${cls(v.pnl_eur)}">${fmt(v.pnl_eur)}</td>
-                <td class="${cls(v.bb_per_100)}">${fmtBB(v.bb_per_100)}</td>
+                <td class="${cls(v.pnl)}">${fmt(v.pnl)}</td>
+                <td class="${cls(v.bb100)}">${fmtBB(v.bb100)}</td>
               </tr>`).join('')}
             </tbody>
           </table>
@@ -5803,9 +5842,9 @@ function renderPlayerStatsView(container) {
       <div class="ps-card" style="margin-top:0.5rem">
         <div class="ps-card-title">📝 Notes</div>
         <div style="font-size:0.8rem;color:var(--text2);line-height:1.7">
-          <div style="margin-bottom:0.5rem"><strong style="color:var(--text)">P&L:</strong> ${m.notes.pnl}</div>
-          <div style="margin-bottom:0.5rem"><strong style="color:var(--text)">Strategy Stats:</strong> ${m.notes.strategy_stats}</div>
-          <div><strong style="color:var(--text)">GTO Ranges:</strong> ${m.notes.gto_ranges}</div>
+          <div style="margin-bottom:0.5rem"><strong style="color:var(--text)">P&L:</strong> ${d._metadata.notes.pnl}</div>
+          <div style="margin-bottom:0.5rem"><strong style="color:var(--text)">Strategy Stats:</strong> ${d._metadata.notes.strategy_stats}</div>
+          <div><strong style="color:var(--text)">GTO Ranges:</strong> ${d._metadata.notes.gto_ranges}</div>
         </div>
       </div>
     `;
@@ -5832,11 +5871,11 @@ function renderPlayerStatsView(container) {
       <div class="ps-layout">
         <!-- Metadata -->
         <div class="ps-meta-bar">
-          <div class="ps-meta-chip"><span class="mc-icon">👤</span> ${m.player}</div>
-          <div class="ps-meta-chip"><span class="mc-icon">🌐</span> ${m.platform}</div>
-          <div class="ps-meta-chip"><span class="mc-icon">🃏</span> ${m.game}</div>
-          <div class="ps-meta-chip"><span class="mc-icon">📅</span> ${m.period}</div>
-          <div class="ps-meta-chip"><span class="mc-icon">💶</span> ${m.currency}</div>
+          <div class="ps-meta-chip"><span class="mc-icon">👤</span> ${d._metadata.player}</div>
+          <div class="ps-meta-chip"><span class="mc-icon">🌐</span> ${d._metadata.platform}</div>
+          <div class="ps-meta-chip"><span class="mc-icon">🃏</span> ${d._metadata.game}</div>
+          <div class="ps-meta-chip"><span class="mc-icon">📅</span> ${periodStr}</div>
+          <div class="ps-meta-chip"><span class="mc-icon">💶</span> ${d._metadata.currency}</div>
         </div>
 
         <!-- Tabs -->
