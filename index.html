@@ -48868,7 +48868,9 @@ async function parseXMLSessions(zip, xmlEntries) {
       }
       if (!buyIn) buyIn = bets; // fallback
 
-      const cashOut = Math.max(0, Math.round((buyIn + (wins - bets)) * 100) / 100);
+      // cashOut = buyIn + session P&L (no clipping — preserves authoritative P&L)
+      const sessionPnL = Math.round((wins - bets) * 100) / 100;
+      const cashOut = Math.round((buyIn + sessionPnL) * 100) / 100;
       buyIn = Math.round(buyIn * 100) / 100;
 
       // Duration: first game start → last game start + small buffer
@@ -48883,25 +48885,43 @@ async function parseXMLSessions(zip, xmlEntries) {
       }
       if (!duration) duration = Math.max(0.25, Math.round(games.length / 30 * 4) / 4);
 
-      // Total rake, showdown winnings, non-showdown winnings per session
+      // Total rake + showdown/non-showdown split using pot-weighted proportional method
+      // Session-level P&L (wins - bets) is authoritative — per-hand win-bet is WRONG
+      // because iPoker XML 'bet' includes uncalled bets but 'win' does NOT include returned uncalled bets.
+      // Showdown detection: iPoker uses muck="0" when player showed cards. 2+ players with muck="0" = showdown.
       let totalRake = 0, showdownWin = 0, nonShowdownWin = 0;
       if (nickname) {
+        let sdPotWeight = 0, nsdPotWeight = 0;
         games.forEach(game => {
-          const p = game.querySelector(`players player[name="${nickname}"]`);
+          const players = game.querySelectorAll('players player');
+          let p = null;
+          players.forEach(pl => { if (pl.getAttribute('name') === nickname) p = pl; });
           if (!p) return;
           totalRake += parseAmt(p.getAttribute('rakeamount') || '0');
-          const win = parseAmt(p.getAttribute('win') || '0');
-          const bet = parseAmt(p.getAttribute('bet') || '0');
-          const net = win - bet;
-          // Winamax: showdown round present when cards go to showdown
-          const hasShowdown = !!game.querySelector('round[id="showdown"]');
-          if (hasShowdown) showdownWin += net;
-          else nonShowdownWin += net;
+
+          const playerBet = parseAmt(p.getAttribute('bet') || '0');
+
+          // Count players with muck="0" — showdown if 2+
+          let muckZeroCount = 0;
+          players.forEach(pl => { if (pl.getAttribute('muck') === '0') muckZeroCount++; });
+          const hasShowdown = muckZeroCount >= 2;
+
+          // Weight by player's action size (big pots count more)
+          const weight = Math.max(playerBet, 0.01);
+          if (hasShowdown) sdPotWeight += weight;
+          else nsdPotWeight += weight;
         });
+
+        // Split session P&L proportionally by pot-weighted action
+        const totalWeight = sdPotWeight + nsdPotWeight;
+        if (totalWeight > 0) {
+          showdownWin = Math.round(sessionPnL * (sdPotWeight / totalWeight) * 100) / 100;
+          nonShowdownWin = Math.round((sessionPnL - showdownWin) * 100) / 100;
+        } else {
+          nonShowdownWin = sessionPnL;
+        }
       }
       totalRake = Math.round(totalRake * 100) / 100;
-      showdownWin = Math.round(showdownWin * 100) / 100;
-      nonShowdownWin = Math.round(nonShowdownWin * 100) / 100;
 
       sessions.push({
         date,
