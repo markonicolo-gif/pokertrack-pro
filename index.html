@@ -48842,7 +48842,7 @@ async function parseXMLSessions(zip, xmlEntries) {
       const tablesize = get('tablesize');
       const currency  = get('currency');
 
-      // Date: "03-22-2026 14:43:33" â†’ "2026-03-22"
+      // Date: "03-22-2026 14:43:33" → "2026-03-22"
       const dm = startStr.match(/(\d{2})-(\d{2})-(\d{4})/);
       const date = dm ? `${dm[3]}-${dm[1]}-${dm[2]}` : '';
       if (!date) continue;
@@ -48871,7 +48871,7 @@ async function parseXMLSessions(zip, xmlEntries) {
       const cashOut = Math.max(0, Math.round((buyIn + (wins - bets)) * 100) / 100);
       buyIn = Math.round(buyIn * 100) / 100;
 
-      // Duration: first game start â†’ last game start + small buffer
+      // Duration: first game start → last game start + small buffer
       let duration = 0;
       if (games.length > 1) {
         const lastStart = games[games.length - 1].querySelector('general startdate')?.textContent?.trim();
@@ -48990,10 +48990,10 @@ const STAKES_LIST = ["1/2","1/3","2/5","5/10","10/25","25/50","0.25/0.5","0.5/1"
 // ===== UTILS =====
 function fmt(v, sign = true) {
   if (v === null || v === undefined) return '-';
-  const s = sign && v > 0 ? '+' : '';
-  return s + '€' + Math.abs(v).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0});
+  const s = sign && v > 0 ? '+' : v < 0 ? '-' : '';
+  return s + Math.abs(v).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0});
 }
-function fmtHr(v) { return (v >= 0 ? '+' : '') + '€' + Math.abs(v).toFixed(2) + '/hr'; }
+function fmtHr(v) { return (v >= 0 ? '+' : '-') + Math.abs(v).toFixed(2) + '/hr'; }
 function cls(v) { return v > 0 ? 'positive' : v < 0 ? 'negative' : ''; }
 function pill(v) { return `<span class="profit-pill ${v >= 0 ? 'pos' : 'neg'}">${fmt(v)}</span>`; }
 function moodEmoji(m) { return ['ðŸ˜´','ðŸ˜','ðŸ™‚','ðŸ˜Š','ðŸ”¥'][m - 1] || 'ðŸ™‚'; }
@@ -49140,22 +49140,22 @@ function renderDashboard(container) {
     <div class="quick-stats">
       <div class="stat-card green">
         <div class="stat-label">This Month</div>
-        <div class="stat-value ${monthlyStats ? cls(monthlyStats.totalProfit) : ''}">${monthlyStats ? fmt(monthlyStats.totalProfit) : '€0'}</div>
+        <div class="stat-value ${monthlyStats ? cls(monthlyStats.totalProfit) : ''}">${monthlyStats ? fmt(monthlyStats.totalProfit) : '0'}</div>
         <div class="stat-sub">${monthlySessions.length} sessions</div>
       </div>
       <div class="stat-card blue">
         <div class="stat-label">Hourly Rate</div>
-        <div class="stat-value ${stats ? cls(stats.hourly) : ''}">${stats ? '€' + Math.abs(stats.hourly).toFixed(2) : '€0'}</div>
+        <div class="stat-value ${stats ? cls(stats.hourly) : ''}">${stats ? (stats.hourly >= 0 ? '+' : '-') + Math.abs(stats.hourly).toFixed(2) : '0'}</div>
         <div class="stat-sub">per hour</div>
       </div>
       <div class="stat-card gold">
         <div class="stat-label">Biggest Win</div>
-        <div class="stat-value positive">${stats ? fmt(stats.biggestWin) : '€0'}</div>
+        <div class="stat-value positive">${stats ? fmt(stats.biggestWin) : '0'}</div>
         <div class="stat-sub">single session</div>
       </div>
       <div class="stat-card purple">
         <div class="stat-label">Bankroll</div>
-        <div class="stat-value neutral">€${bankroll.toLocaleString()}</div>
+        <div class="stat-value neutral">${bankroll.toLocaleString()}</div>
         <div class="stat-sub">current</div>
       </div>
     </div>
@@ -49191,7 +49191,7 @@ function renderDashboard(container) {
             <div style="margin-bottom:1rem">
               <div style="font-size:0.82rem;color:var(--text3);margin-bottom:0.5rem">Monthly Target: <strong style="color:var(--text)">${fmt(monthlyGoal,false)}</strong></div>
               <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${fill}"></div></div>
-              <div class="goal-numbers"><span>${monthlyStats ? fmt(monthlyStats.totalProfit) : '€0'}</span><span>${pct.toFixed(0)}%</span></div>
+              <div class="goal-numbers"><span>${monthlyStats ? fmt(monthlyStats.totalProfit) : '0'}</span><span>${pct.toFixed(0)}%</span></div>
             </div>
           `;
         })() : `<div class="empty-state" style="padding:1.5rem"><div class="empty-sub">Set a monthly goal to track progress</div><button class="btn btn-gold btn-sm" style="margin-top:0.75rem" onclick="switchView('goals')">&#9733; Set Goal</button></div>`}
@@ -49263,7 +49263,7 @@ function renderSessionsView(container) {
           <button class="btn btn-secondary btn-xs" data-bulk-filter="all">All</button>
           <button class="btn btn-secondary btn-xs" data-bulk-filter="none">None</button>
           <input type="date" id="bulk-from" title="From date" style="padding:0.25rem 0.5rem;font-size:0.78rem;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px">
-          <span style="font-size:0.78rem;color:var(--text3)">â†’</span>
+          <span style="font-size:0.78rem;color:var(--text3)">→</span>
           <input type="date" id="bulk-to" title="To date" style="padding:0.25rem 0.5rem;font-size:0.78rem;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px">
           <button class="btn btn-secondary btn-xs" id="bulk-date-select">Select Range</button>
         </div>
@@ -49405,7 +49405,7 @@ function renderTable(sessions, search = '') {
       if (groupMode === 'week') {
         const [from, to] = key.split('_');
         const fd = new Date(from + 'T12:00:00'), td = new Date(to + 'T12:00:00');
-        return fd.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' â€“ ' + td.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        return fd.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' — ' + td.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
       }
       if (groupMode === 'month') {
         const [y, m] = key.split('-');
@@ -49438,11 +49438,11 @@ function renderTable(sessions, search = '') {
 
     const paginationBar = `
       <div class="pagination-bar">
-        <div class="pagination-info">Showing <strong>${start + 1}â€“${Math.min(start + pageSize, keys.length)}</strong> of <strong>${keys.length}</strong> ${unitLabel}</div>
+        <div class="pagination-info">Showing <strong>${start + 1}—${Math.min(start + pageSize, keys.length)}</strong> of <strong>${keys.length}</strong> ${unitLabel}</div>
         <div class="pagination-controls">
-          <button class="page-btn" data-page="${currentPage - 1}" ${currentPage === 1 ? 'disabled' : ''}>â€¹ Prev</button>
-          ${pageNums.map(p => p === '...' ? `<span class="page-ellipsis">â€¦</span>` : `<button class="page-btn ${p === currentPage ? 'active' : ''}" data-page="${p}">${p}</button>`).join('')}
-          <button class="page-btn" data-page="${currentPage + 1}" ${currentPage === totalPages ? 'disabled' : ''}>Next â€º</button>
+          <button class="page-btn" data-page="${currentPage - 1}" ${currentPage === 1 ? 'disabled' : ''}>‹ Prev</button>
+          ${pageNums.map(p => p === '...' ? `<span class="page-ellipsis">…</span>` : `<button class="page-btn ${p === currentPage ? 'active' : ''}" data-page="${p}">${p}</button>`).join('')}
+          <button class="page-btn" data-page="${currentPage + 1}" ${currentPage === totalPages ? 'disabled' : ''}>Next ›</button>
         </div>
         <div class="pagination-size">
           <select id="page-size-select">${pageSizeOpts.map(n => `<option value="${n}" ${n === pageSize ? 'selected' : ''}>${n} ${unitLabel} / page</option>`).join('')}</select>
@@ -49451,7 +49451,7 @@ function renderTable(sessions, search = '') {
 
     const cols = [
       { label: 'Date' }, { label: 'Location' }, { label: 'Game' }, { label: 'Stakes' },
-      { label: 'Buy-in' }, { label: 'Cash-out' }, { label: 'Profit' }, { label: 'Hours' }, { label: '€/hr' },
+      { label: 'Buy-in' }, { label: 'Cash-out' }, { label: 'Profit' }, { label: 'Hours' }, { label: '/hr' },
     ];
 
     let html = `<div class="table-wrapper"><table>`;
@@ -49474,7 +49474,7 @@ function renderTable(sessions, search = '') {
                 </div>
                 <div class="day-group-right">
                   <span class="day-hours">${grpHours > 0 ? grpHours.toFixed(1) + 'h' : ''}</span>
-                  <span class="day-profit ${grpProfit > 0 ? 'positive' : grpProfit < 0 ? 'negative' : ''}">${grpProfit >= 0 ? '+' : ''}€${Math.abs(grpProfit).toFixed(0)}</span>
+                  <span class="day-profit ${grpProfit > 0 ? 'positive' : grpProfit < 0 ? 'negative' : ''}">${grpProfit >= 0 ? '+' : '-'}${Math.abs(grpProfit).toFixed(0)}</span>
                 </div>
               </div>
             </th>
@@ -49494,8 +49494,8 @@ function renderTable(sessions, search = '') {
             <td>${s.location || '<span style="color:var(--text3)">-</span>'}</td>
             <td>${s.gameType || '<span style="color:var(--text3)">-</span>'}</td>
             <td>${s.stakes ? `<span class="badge badge-blue">${s.stakes}</span>` : '<span style="color:var(--text3)">-</span>'}</td>
-            <td>€${s.buyIn.toLocaleString()}</td>
-            <td>€${s.cashOut.toLocaleString()}</td>
+            <td>${s.buyIn.toLocaleString()}</td>
+            <td>${s.cashOut.toLocaleString()}</td>
             <td>${pill(p)}</td>
             <td>${s.duration || '<span style="color:var(--text3)">-</span>'}</td>
             <td class="${cls(hr)}">${hr !== null ? fmtHr(hr) : '<span style="color:var(--text3)">-</span>'}</td>
@@ -49536,15 +49536,15 @@ function renderTable(sessions, search = '') {
   const paginationBar = bulkMode ? '' : `
     <div class="pagination-bar">
       <div class="pagination-info">
-        Showing <strong>${start + 1}â€“${Math.min(start + pageSize, sorted.length)}</strong> of <strong>${sorted.length}</strong> sessions
+        Showing <strong>${start + 1}—${Math.min(start + pageSize, sorted.length)}</strong> of <strong>${sorted.length}</strong> sessions
       </div>
       <div class="pagination-controls">
-        <button class="page-btn" data-page="${currentPage - 1}" ${currentPage === 1 ? 'disabled' : ''}>â€¹ Prev</button>
+        <button class="page-btn" data-page="${currentPage - 1}" ${currentPage === 1 ? 'disabled' : ''}>‹ Prev</button>
         ${pageNums.map(p => p === '...'
-          ? `<span class="page-ellipsis">â€¦</span>`
+          ? `<span class="page-ellipsis">…</span>`
           : `<button class="page-btn ${p === currentPage ? 'active' : ''}" data-page="${p}">${p}</button>`
         ).join('')}
-        <button class="page-btn" data-page="${currentPage + 1}" ${currentPage === totalPages ? 'disabled' : ''}>Next â€º</button>
+        <button class="page-btn" data-page="${currentPage + 1}" ${currentPage === totalPages ? 'disabled' : ''}>Next ›</button>
       </div>
       <div class="pagination-size">
         <select id="page-size-select">
@@ -49569,8 +49569,8 @@ function renderTable(sessions, search = '') {
       <td>${s.location || '<span style="color:var(--text3)">-</span>'}</td>
       <td>${s.gameType || '<span style="color:var(--text3)">-</span>'}</td>
       <td>${s.stakes ? `<span class="badge badge-blue">${s.stakes}</span>` : '<span style="color:var(--text3)">-</span>'}</td>
-      <td>€${s.buyIn.toLocaleString()}</td>
-      <td>€${s.cashOut.toLocaleString()}</td>
+      <td>${s.buyIn.toLocaleString()}</td>
+      <td>${s.cashOut.toLocaleString()}</td>
       <td>${pill(p)}</td>
       <td>${s.duration || '<span style="color:var(--text3)">-</span>'}</td>
       <td class="${cls(hr)}">${hr !== null ? fmtHr(hr) : '<span style="color:var(--text3)">-</span>'}</td>
@@ -49794,7 +49794,7 @@ function bindSessionEvents(container) {
     if (confirm('Delete ALL sessions? This cannot be undone.')) { clearAll(); renderSessionsView(container); }
   });
 
-  // â”€â”€ Bulk select â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ------ Bulk select ------------------------------------------------------------------------------------------------------------------------------------------
   function updateBulkCount() {
     const countEl = container.querySelector('#bulk-count');
     const deleteBtn = container.querySelector('#bulk-delete-btn');
@@ -49976,12 +49976,12 @@ function renderAnalyticsStats(el, sessions) {
     ${statCard('Avg Session', fmt(s.avgSession), cls(s.avgSession), '&#128201;', s.avgSession >= 0 ? 'green' : 'red', 'per session')}
     ${statCard('Biggest Win', fmt(s.biggestWin), 'positive', '&#127881;', 'green', 'best session')}
     ${statCard('Biggest Loss', fmt(s.biggestLoss), 'negative', '&#128546;', 'red', 'worst session')}
-    ${statCard('Total Invested', '€' + s.totalBuyIn.toLocaleString(), 'neutral', '&#128180;', 'purple', 'total buy-ins')}
+    ${statCard('Total Invested', s.totalBuyIn.toLocaleString(), 'neutral', '&#128180;', 'purple', 'total buy-ins')}
     ${statCard('ROI', s.roi + '%', cls(parseFloat(s.roi)), '&#128200;', parseFloat(s.roi) >= 0 ? 'green' : 'red', 'return on investment')}
     ${s.bbhr !== null ? statCard('BB/hr', s.bbhr.toFixed(1), cls(s.bbhr), '&#127183;', 'blue', 'big blinds / hour') : ''}
     ${statCard('Streak', s.streak > 0 ? s.streak + '-' + (s.streakType === 'win' ? 'Win ðŸ”¥' : 'Loss â„ï¸') : '-', s.streakType === 'win' ? 'positive' : s.streakType === 'loss' ? 'negative' : '', '&#9889;', s.streakType === 'win' ? 'green' : 'red', 'current streak')}
-    ${statCard('Total Rake Paid', '€' + s.totalRake.toFixed(2), 'negative', '&#127968;', 'red', s.totalHands > 0 ? s.totalHands + ' hands' : 'all sessions')}
-    ${statCard('Rake / Hour', '€' + s.rakePerHour.toFixed(2) + '/hr', 'negative', '&#9201;', 'red', 'cost of playing')}
+    ${statCard('Total Rake Paid', '-' + s.totalRake.toFixed(2), 'negative', '&#127968;', 'red', s.totalHands > 0 ? s.totalHands + ' hands' : 'all sessions')}
+    ${statCard('Rake / Hour', '-' + s.rakePerHour.toFixed(2) + '/hr', 'negative', '&#9201;', 'red', 'cost of playing')}
     ${statCard('Gross Profit', fmt(s.grossProfit), cls(s.grossProfit), '&#128173;', s.grossProfit >= 0 ? 'green' : 'red', 'before rake')}
   `;
 }
@@ -50014,7 +50014,7 @@ function renderAllCharts(container, sessions) {
     callbacks: {
       label: ctx => {
         const v = ctx.parsed?.y ?? ctx.parsed;
-        if (typeof v === 'number') return (v >= 0 ? '+' : '') + '€' + v.toLocaleString('en', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+        if (typeof v === 'number') return (v >= 0 ? '+' : '-') + Math.abs(v).toLocaleString('en', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
         return String(v);
       }
     }
@@ -50024,7 +50024,7 @@ function renderAllCharts(container, sessions) {
     interaction: { mode: 'index', intersect: false },
     plugins: { legend: { display: false }, tooltip: tooltipDefaults },
     scales: {
-      y: { grid: gridOpts, ticks: { ...tickOpts, callback: v => '€' + v.toLocaleString() } },
+      y: { grid: gridOpts, ticks: { ...tickOpts, callback: v => (v >= 0 ? '' : '-') + Math.abs(v).toLocaleString() } },
       x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: tickOpts }
     }
   };
@@ -50077,7 +50077,7 @@ function renderAllCharts(container, sessions) {
         legend: { display: true, labels: { color: '#64748b', font: { size: 11 }, boxWidth: 24, padding: 12, filter: item => item.text !== 'Zero' } },
         tooltip: { ...tooltipDefaults, filter: item => item.dataset.label !== 'Zero', callbacks: {
           title: ctx => ctx[0]?.label || '',
-          label: ctx => { const v = ctx.parsed.y; return `${ctx.dataset.label}: ${v >= 0 ? '+' : ''}€${v.toLocaleString('en', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`; }
+          label: ctx => { const v = ctx.parsed.y; return `${ctx.dataset.label}: ${v >= 0 ? '+' : '-'}${Math.abs(v).toLocaleString('en', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`; }
         }}
       }
     }
@@ -50104,7 +50104,7 @@ function renderAllCharts(container, sessions) {
   const dL = Object.keys(buckets).map(Number).sort((a,b)=>a-b);
   activeCharts.push(new Chart(container.querySelector('#ch-dist'), {
     type: 'bar',
-    data: { labels: dL.map(b => '$'+b+'â†’'), datasets: [{ data: dL.map(b => buckets[b]), backgroundColor: dL.map(b => b >= 0 ? 'rgba(0,212,170,0.6)' : 'rgba(244,63,94,0.6)'), borderRadius: 4 }] },
+    data: { labels: dL.map(b => '$'+b+'→'), datasets: [{ data: dL.map(b => buckets[b]), backgroundColor: dL.map(b => b >= 0 ? 'rgba(0,212,170,0.6)' : 'rgba(244,63,94,0.6)'), borderRadius: 4 }] },
     options: { ...chartDefaults, scales: { y: { ...chartDefaults.scales.y, ticks: { ...tickOpts, stepSize: 1, callback: v => v } }, x: chartDefaults.scales.x } }
   }));
 
@@ -50145,7 +50145,7 @@ function renderAllCharts(container, sessions) {
   activeCharts.push(new Chart(container.querySelector('#ch-scatter'), {
     type: 'scatter',
     data: { datasets: [{ data: scatterData, backgroundColor: scatterData.map(p => p.y >= 0 ? 'rgba(0,212,170,0.6)' : 'rgba(244,63,94,0.6)'), pointRadius: 5 }] },
-    options: { responsive: true, plugins: { legend: { display: false }, tooltip: { ...tooltipDefaults, callbacks: { label: ctx => `${ctx.parsed.x}h â†’ ${ctx.parsed.y >= 0 ? '+' : ''}€${ctx.parsed.y.toLocaleString()}` } } }, scales: { x: { title: { display: true, text: 'Hours', color: '#64748b' }, grid: gridOpts, ticks: tickOpts }, y: { title: { display: true, text: 'Profit (€)', color: '#64748b' }, ticks: { ...tickOpts, callback: v => '€'+v.toLocaleString() }, grid: gridOpts } } }
+    options: { responsive: true, plugins: { legend: { display: false }, tooltip: { ...tooltipDefaults, callbacks: { label: ctx => `${ctx.parsed.x}h → ${ctx.parsed.y >= 0 ? '+' : '-'}${Math.abs(ctx.parsed.y).toLocaleString()}` } } }, scales: { x: { title: { display: true, text: 'Hours', color: '#64748b' }, grid: gridOpts, ticks: tickOpts }, y: { title: { display: true, text: 'Profit', color: '#64748b' }, ticks: { ...tickOpts, callback: v => (v >= 0 ? '' : '-') + Math.abs(v).toLocaleString() }, grid: gridOpts } } }
   }));
 
   // 8. Hourly Rate Trend (rolling avg)
@@ -50168,7 +50168,7 @@ function renderAllCharts(container, sessions) {
         { data: hrLabels.map(() => 0), borderColor: 'rgba(255,255,255,0.08)', borderDash: [4,4], borderWidth: 1, pointRadius: 0, tooltip: { enabled: false } }
       ]
     },
-    options: { ...chartDefaults, plugins: { ...chartDefaults.plugins, tooltip: { ...tooltipDefaults, filter: item => item.datasetIndex === 0, callbacks: { title: ctx => ctx[0]?.label || '', label: ctx => `€/hr: ${ctx.parsed.y >= 0 ? '+' : ''}€${ctx.parsed.y.toFixed(2)}` } } } }
+    options: { ...chartDefaults, plugins: { ...chartDefaults.plugins, tooltip: { ...tooltipDefaults, filter: item => item.datasetIndex === 0, callbacks: { title: ctx => ctx[0]?.label || '', label: ctx => `/hr: ${ctx.parsed.y >= 0 ? '+' : '-'}${Math.abs(ctx.parsed.y).toFixed(2)}` } } } }
   }));
 
   // Rake per session (only sessions with rake data)
@@ -50190,7 +50190,7 @@ function renderAllCharts(container, sessions) {
       options: {
         ...chartDefaults,
         scales: {
-          y: { grid: gridOpts, ticks: { ...tickOpts, callback: v => '€' + v.toFixed(2) } },
+          y: { grid: gridOpts, ticks: { ...tickOpts, callback: v => (v >= 0 ? '' : '-') + Math.abs(v).toFixed(2) } },
           x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: tickOpts }
         }
       }
@@ -50231,7 +50231,7 @@ function renderLiveView(container) {
         <div class="live-stats-row" style="margin-bottom:1.5rem">
           <div class="live-stat">
             <div class="live-stat-label">Buy-in</div>
-            <div class="live-stat-value" id="live-buyin-display">${live ? '€' + live.totalBuyIn.toLocaleString() : '-'}</div>
+            <div class="live-stat-value" id="live-buyin-display">${live ? live.totalBuyIn.toLocaleString() : '-'}</div>
           </div>
           <div class="live-stat">
             <div class="live-stat-label">Add-ons</div>
@@ -50395,8 +50395,8 @@ function renderGoalsView(container) {
         </div>
         <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${fill}"></div></div>
         <div class="goal-numbers">
-          <span>${unit === 'sessions' ? current + ' sessions' : '€' + Math.abs(current).toLocaleString()}</span>
-          <span>Target: ${unit === 'sessions' ? target + ' sessions' : '€' + target.toLocaleString()}</span>
+          <span>${unit === 'sessions' ? current + ' sessions' : (current >= 0 ? '+' : '-') + Math.abs(current).toLocaleString()}</span>
+          <span>Target: ${unit === 'sessions' ? target + ' sessions' : target.toLocaleString()}</span>
         </div>
       </div>
     `;
@@ -50475,7 +50475,7 @@ function detectLeaks(sessions) {
 
   const leaks = [];
   const sorted = [...sessions].sort((a, b) => a.date.localeCompare(b.date));
-  const fmtA = (v) => (v >= 0 ? '+' : '') + '€' + Math.abs(v).toFixed(0);
+  const fmtA = (v) => (v >= 0 ? '+' : '-') + Math.abs(v).toFixed(0);
   const avgProfit = s => s.reduce((t, x) => t + (x.cashOut - x.buyIn), 0) / s.length;
 
   // 1. SESSION DURATION LEAK
@@ -50518,7 +50518,7 @@ function detectLeaks(sessions) {
             { label: 'Poor mood (ðŸ˜´ðŸ˜)', value: fmtA(bAvg), count: bad.length,  positive: bAvg >= 0 },
             { label: 'Good mood (ðŸ˜ŠðŸ”¥)', value: fmtA(gAvg), count: good.length, positive: gAvg >= 0 },
           ],
-          fix: 'Create a pre-session checklist: slept 7h+, not stressed, not hungry. If any fail â€” don\'t play.',
+          fix: 'Create a pre-session checklist: slept 7h+, not stressed, not hungry. If any fail — don\'t play.',
         });
       }
     }
@@ -50557,7 +50557,7 @@ function detectLeaks(sessions) {
       id: 'tilt', severity: tiltCount >= 4 ? 'critical' : 'warning',
       title: 'Tilt / Loss Chasing Detected',
       icon: 'ðŸ”¥',
-      description: `${tiltCount} times you played the same or next day after a big losing session â€” and lost again. Total extra losses: ${fmtA(tiltLoss)}.`,
+      description: `${tiltCount} times you played the same or next day after a big losing session — and lost again. Total extra losses: ${fmtA(tiltLoss)}.`,
       data: [
         { label: 'Back-to-back loss sessions', value: tiltCount + 'x', count: tiltCount, positive: false },
         { label: 'Extra losses from chasing',  value: fmtA(tiltLoss), count: null, positive: false },
@@ -50593,10 +50593,10 @@ function detectLeaks(sessions) {
       id: 'rake', severity: 'critical',
       title: 'Rake is Costing You Your Profits',
       icon: 'ðŸ¦',
-      description: `Without rake you\'d be profitable (${fmtA(grossProfit)}), but rake of €${totalRake.toFixed(2)} puts you in the red. You need a higher edge to beat the rake.`,
+      description: `Without rake you\'d be profitable (${fmtA(grossProfit)}), but rake of ${totalRake.toFixed(2)} puts you in the red. You need a higher edge to beat the rake.`,
       data: [
         { label: 'Gross profit (before rake)', value: fmtA(grossProfit),     positive: true },
-        { label: 'Total rake paid',            value: '€' + totalRake.toFixed(2), positive: false },
+        { label: 'Total rake paid',            value: '-' + totalRake.toFixed(2), positive: false },
         { label: 'Net profit (after rake)',     value: fmtA(netProfit),       positive: false },
       ],
       fix: 'Look for rakeback offers, play in softer games with higher edge, or consider lower-rake platforms.',
@@ -50646,7 +50646,7 @@ function detectLeaks(sessions) {
           id: 'buyin', severity: 'warning',
           title: 'Short Buy-in Underperformance',
           icon: 'ðŸ’¸',
-          description: `Sessions where you bought in for less than usual (avg €${avgBI.toFixed(0)}) perform significantly worse.`,
+          description: `Sessions where you bought in for less than usual (avg ${avgBI.toFixed(0)}) perform significantly worse.`,
           data: [
             { label: 'Short buy-in sessions', value: fmtA(sAvg), count: short.length, positive: sAvg >= 0 },
             { label: 'Full buy-in sessions',  value: fmtA(fAvg), count: full.length,  positive: fAvg >= 0 },
@@ -50668,11 +50668,11 @@ function detectLeaks(sessions) {
         id: 'variance', severity: 'warning',
         title: 'Extremely High Variance',
         icon: 'ðŸŽ¢',
-        description: `Your results swing wildly (std dev €${stdDev.toFixed(0)}). Very high variance can mask whether you\'re actually winning or losing long-term.`,
+        description: `Your results swing wildly (std dev ${stdDev.toFixed(0)}). Very high variance can mask whether you\'re actually winning or losing long-term.`,
         data: [
           { label: 'Biggest win',  value: fmtA(Math.max(...profits)), positive: true },
           { label: 'Biggest loss', value: fmtA(Math.min(...profits)), positive: false },
-          { label: 'Std deviation', value: '€' + stdDev.toFixed(0), positive: false },
+          { label: 'Std deviation', value: stdDev.toFixed(0), positive: false },
         ],
         fix: 'Consider playing lower stakes or avoiding PLO hi-variance spots. Build a larger sample to understand your true winrate.',
       });
@@ -50717,9 +50717,9 @@ const PLAYER_STATS_DATA = {
   postflop_stats:{flops_seen:49658,cbet_flop_pct:56.5,cbet_turn_pct:43.1,fold_to_cbet_flop_pct:48.8,check_raise_flop_pct:6.8,donk_bet_flop_pct:15.2,wtsd_pct:32.5,wsd_pct:57.6,aggression_factor:1.95,aggression_breakdown:{flop:{bets:13775,raises:1904,calls:7982},turn:{bets:8890,raises:921,calls:5118},river:{bets:4205,raises:413,calls:2318}}},
   gto_benchmarks_plo_6max:{preflop_by_position:{BTN:{vpip:[38,48],pfr:[30,40],three_bet:[6,10],open_raise:[40,52],limp:[0,2]},CO:{vpip:[28,36],pfr:[24,32],three_bet:[5,9],open_raise:[28,36],limp:[0,1]},HJ:{vpip:[22,30],pfr:[20,28],three_bet:[4,8],open_raise:[22,30],limp:[0,1]},UTG:{vpip:[16,24],pfr:[16,22],three_bet:[3,6],open_raise:[16,22],limp:[0,1]},SB:{vpip:[30,40],pfr:[20,30],three_bet:[6,12],open_raise:[22,32],limp:[0,5]},BB:{vpip:[30,40],pfr:[8,14],three_bet:[6,12]}},postflop:{cbet_flop:[50,65],cbet_turn:[45,60],fold_to_cbet_flop:[35,50],check_raise_flop:[8,15],donk_bet_flop:[0,5],wtsd:[28,35],wsd:[50,58],aggression_factor:[2.0,3.5]}},
   leak_analysis:[{severity:"critical",leak:"SB open-limp rate 37.5%",your_value:37.5,gto_range:[0,5],impact:"SB losing -47 bb/100. Building pots OOP with capped range.",fix:"Raise or fold from SB. Never open-limp."},{severity:"critical",leak:"3-Bet rate 3.3%",your_value:3.3,gto_range:[6,10],impact:"Flatting premiums instead of 3-betting. Cold-call 40.2% is way too high.",fix:"3-bet AAxx, KKxx suited, ds rundowns. Target 6-10% overall."},{severity:"major",leak:"VPIP 41.2% (too wide)",your_value:41.2,gto_range:[28,36],impact:"UTG 30.7% is nearly double GTO. VPIP-PFR gap of 20 pts (should be 10-15).",fix:"Tighten EP to 16-22%. Fold low rundowns, danglers, single-suited trash."},{severity:"major",leak:"Donk bet flop 15.2%",your_value:15.2,gto_range:[0,5],impact:"Leading into PFR who has range advantage. Exploitable.",fix:"Check to PFR. Use check-raises instead of donk bets."},{severity:"major",leak:"Check-raise flop 6.8% (too low)",your_value:6.8,gto_range:[8,15],impact:"Not punishing c-bets enough. Donking instead of check-raising.",fix:"Check-raise sets, wraps with equity, combo draws."},{severity:"major",leak:"Fold to 3-bet 31% (too low)",your_value:31.0,gto_range:[40,55],impact:"Calling 3-bets too wide, especially OOP.",fix:"Fold more opens vs 3-bets. KQxx, low rundowns = fold."},{severity:"minor",leak:"Aggression factor 1.95 (slightly low)",your_value:1.95,gto_range:[2.0,3.5],impact:"Could bet rivers more for thin value.",fix:"Value-bet thinner on river. Dont check back strong hands."}],
-  strengths:["WTSD 32.5% is in GTO range (28-35%)","W$SD 57.6% is solid (GTO 50-58%)","C-bet flop 56.5% is within GTO range","BTN +43 bb/100 â€” strong in-position play","HJ +34.9 bb/100 â€” solid middle position","Winning at €1/€2 stakes (+15.29 bb/100)"],
+  strengths:["WTSD 32.5% is in GTO range (28-35%)","W$SD 57.6% is solid (GTO 50-58%)","C-bet flop 56.5% is within GTO range","BTN +43 bb/100 — strong in-position play","HJ +34.9 bb/100 — solid middle position","Winning at €1/€2 stakes (+15.29 bb/100)"],
   top_opponents:{SleeepyHead:{hands:19917,vpip:21.1,pfr:11.3,af:0.33,type:"Tight/Passive Nit",exploit:"Steal blinds. Fold when they show aggression."},JoeDeacon:{hands:13547,vpip:25.7,pfr:16.9,af:0.45,type:"Semi-Loose/Passive",exploit:"Value-bet relentlessly. Reduce bluffs."},AAnarchisTT:{hands:12770,vpip:16.9,pfr:11.4,af:0.44,type:"Very Tight/Passive",exploit:"Steal aggressively. Never bluff when they bet."},GJ7Caesar:{hands:12602,vpip:26.9,pfr:18.0,af:0.62,type:"LAG-ish Reg",exploit:"3-bet them in position. Trap with check-raises."},CogBrandy:{hands:12329,vpip:20.1,pfr:12.7,af:0.52,type:"Tight/Passive",exploit:"Steal blinds. Dont pay off their aggression."},LazyCocos:{hands:5750,vpip:21.5,pfr:17.2,af:0.86,type:"TAG/Most Aggressive Reg",exploit:"Let them bet for you. Check-raise strong hands."},sinisterr28:{hands:4699,vpip:27.5,pfr:17.7,af:0.62,type:"Loose Reg",exploit:"3-bet wider. Value-bet thinner."},odompTiu:{hands:5658,vpip:24.3,pfr:17.0,af:0.51,type:"Standard Reg",exploit:"Play ranges properly. Focus on positional advantage."}},
-  confidence_levels:{total_pnl:"HIGH â€” directly from Novibet session headers",pnl_by_stakes:"HIGH â€” from session headers",pnl_by_month:"HIGH â€” from session headers",preflop_stats:"HIGH â€” simple action counting from XML",postflop_stats:"HIGH â€” action counting from XML",per_position_bb100:"MEDIUM â€” corrected for uncalled bets but ~4800 EUR residual vs session headers, so directionally correct but may be off by a few bb/100 per position",opponent_stats:"HIGH â€” action counting, large sample sizes",gto_benchmarks:"APPROXIMATE â€” solver outputs vary by stack depth, player pool, rake structure"}
+  confidence_levels:{total_pnl:"HIGH — directly from Novibet session headers",pnl_by_stakes:"HIGH — from session headers",pnl_by_month:"HIGH — from session headers",preflop_stats:"HIGH — simple action counting from XML",postflop_stats:"HIGH — action counting from XML",per_position_bb100:"MEDIUM — corrected for uncalled bets but ~4800 EUR residual vs session headers, so directionally correct but may be off by a few bb/100 per position",opponent_stats:"HIGH — action counting, large sample sizes",gto_benchmarks:"APPROXIMATE — solver outputs vary by stack depth, player pool, rake structure"}
 };
 
 function renderPlayerStatsView(container) {
@@ -50731,13 +50731,13 @@ function renderPlayerStatsView(container) {
   const gto = d.gto_benchmarks_plo_6max;
 
   // Helpers
-  const fmt = (n) => n >= 0 ? `+€${n.toFixed(2)}` : `-€${Math.abs(n).toFixed(2)}`;
+  const fmt = (n) => n >= 0 ? `+${n.toFixed(2)}` : `-${Math.abs(n).toFixed(2)}`;
   const fmtBB = (n) => (n >= 0 ? '+' : '') + n.toFixed(2);
   const cls = (n) => n >= 0 ? 'ps-positive' : 'ps-negative';
   const pctBar = (val, max) => Math.min(100, (val / max) * 100);
 
   // Stake labels
-  const stakeLabels = {PLO_005_010:'€0.05/€0.10',PLO_010_020:'€0.10/€0.20',PLO_025_050:'€0.25/€0.50',PLO_050_100:'€0.50/€1.00',PLO_100_200:'€1.00/€2.00',PLO_200_400:'€2.00/€4.00'};
+  const stakeLabels = {PLO_005_010:'0.05/0.10',PLO_010_020:'0.10/0.20',PLO_025_050:'0.25/0.50',PLO_050_100:'0.50/1.00',PLO_100_200:'1.00/2.00',PLO_200_400:'2.00/4.00'};
   const monthLabels = {"2025_04_April":"April 2025","2025_05_May":"May 2025","2025_07_July":"July 2025"};
 
   // GTO bar builder
@@ -50777,8 +50777,8 @@ function renderPlayerStatsView(container) {
         </div>
         <div class="ps-hero-card gold">
           <div class="ps-hero-label">Rake Paid</div>
-          <div class="ps-hero-val" style="color:var(--gold)">€${pnl.total_rake_paid_eur.toLocaleString()}</div>
-          <div class="ps-hero-sub">Avg BB: €${pnl.avg_bb_size_eur}</div>
+          <div class="ps-hero-val" style="color:var(--gold)">${pnl.total_rake_paid_eur.toLocaleString()}</div>
+          <div class="ps-hero-sub">Avg BB: ${pnl.avg_bb_size_eur}</div>
         </div>
         <div class="ps-hero-card purple">
           <div class="ps-hero-label">VPIP / PFR</div>
@@ -50891,7 +50891,7 @@ function renderPlayerStatsView(container) {
       <div class="ps-grid-2">
         <div class="ps-card">
           <div class="ps-card-title">âš¡ Aggression Factor: ${post.aggression_factor}</div>
-          <div style="font-size:0.8rem;color:var(--text2);margin-bottom:0.75rem">GTO range: ${gtoPost.aggression_factor[0]} â€“ ${gtoPost.aggression_factor[1]}</div>
+          <div style="font-size:0.8rem;color:var(--text2);margin-bottom:0.75rem">GTO range: ${gtoPost.aggression_factor[0]} — ${gtoPost.aggression_factor[1]}</div>
           <table class="ps-table">
             <thead><tr><th>Street</th><th>Bets</th><th>Raises</th><th>Calls</th><th>AF</th></tr></thead>
             <tbody>
@@ -50906,8 +50906,8 @@ function renderPlayerStatsView(container) {
         <div class="ps-card">
           <div class="ps-card-title">ðŸŽ² Showdown Summary</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:0.5rem">
-            <div><div class="ps-hero-label">WTSD %</div><div class="ps-hero-val" style="font-size:1.3rem;color:var(--green)">${post.wtsd_pct}%</div><div class="ps-hero-sub">GTO: ${gtoPost.wtsd[0]}â€“${gtoPost.wtsd[1]}%</div></div>
-            <div><div class="ps-hero-label">W$SD %</div><div class="ps-hero-val" style="font-size:1.3rem;color:var(--green)">${post.wsd_pct}%</div><div class="ps-hero-sub">GTO: ${gtoPost.wsd[0]}â€“${gtoPost.wsd[1]}%</div></div>
+            <div><div class="ps-hero-label">WTSD %</div><div class="ps-hero-val" style="font-size:1.3rem;color:var(--green)">${post.wtsd_pct}%</div><div class="ps-hero-sub">GTO: ${gtoPost.wtsd[0]}—${gtoPost.wtsd[1]}%</div></div>
+            <div><div class="ps-hero-label">W$SD %</div><div class="ps-hero-val" style="font-size:1.3rem;color:var(--green)">${post.wsd_pct}%</div><div class="ps-hero-sub">GTO: ${gtoPost.wsd[0]}—${gtoPost.wsd[1]}%</div></div>
           </div>
         </div>
       </div>
@@ -50926,7 +50926,7 @@ function renderPlayerStatsView(container) {
           <div class="ps-leak-body">
             <div class="ps-leak-vals">
               <div class="ps-leak-v">Your value: <span style="color:var(--red)">${l.your_value}</span></div>
-              <div class="ps-leak-v">GTO range: <span style="color:var(--green)">${l.gto_range[0]} â€“ ${l.gto_range[1]}</span></div>
+              <div class="ps-leak-v">GTO range: <span style="color:var(--green)">${l.gto_range[0]} — ${l.gto_range[1]}</span></div>
             </div>
             <div style="margin-bottom:0.35rem">${l.impact}</div>
             <div class="ps-leak-fix">ðŸ’¡ ${l.fix}</div>
@@ -51087,7 +51087,7 @@ function renderLeakFinderView(container) {
                   <div class="leak-badge" style="background:${sevBg[l.severity]};color:${sevColor[l.severity]}">${sevLabel[l.severity]}</div>
                   <div class="leak-title">${l.title}</div>
                 </div>
-                <div class="leak-arrow">â€º</div>
+                <div class="leak-arrow">›</div>
               </div>
             `).join('')}
           </div>
@@ -51257,7 +51257,7 @@ function renderHandLoggerView(container) {
     });
   }
 
-  /* â”€â”€ STATS VIEW â”€â”€ */
+  /* ------ STATS VIEW ------ */
   function renderHLStats(hands, stats) {
     if (!stats) return `
       <div style="text-align:center;padding:4rem 1rem;color:var(--text3)">
@@ -51315,7 +51315,7 @@ function renderHandLoggerView(container) {
       </div>`;
   }
 
-  /* â”€â”€ HELPERS â”€â”€ */
+  /* ------ HELPERS ------ */
   function hlCard(label, value, sub, accent) {
     return `<div class="card" style="padding:1rem;position:relative;overflow:hidden">
       <div style="position:absolute;top:-10px;right:-10px;width:50px;height:50px;border-radius:50%;background:${accent};opacity:0.1;filter:blur(12px)"></div>
@@ -51398,7 +51398,7 @@ function renderHandLoggerView(container) {
     return `<div style="display:grid;grid-template-columns:repeat(13,1fr);gap:2px;min-width:480px">${cells}</div>`;
   }
 
-  /* â”€â”€ HISTORY VIEW â”€â”€ */
+  /* ------ HISTORY VIEW ------ */
   function renderHLHistory(sorted) {
     if (!sorted.length) return `<div style="text-align:center;padding:3rem;color:var(--text3)">ðŸƒ No hands recorded yet</div>`;
     const rows = sorted.slice(0, 100).map(h => {
@@ -51421,7 +51421,7 @@ function renderHandLoggerView(container) {
     return `<div class="card" style="overflow:hidden;padding:0"><div style="max-height:500px;overflow-y:auto">${rows}</div></div>`;
   }
 
-  /* â”€â”€ ADD HAND FORM â”€â”€ */
+  /* ------ ADD HAND FORM ------ */
   function renderHLForm() {
     const today = new Date().toISOString().slice(0, 10);
     const chipSet = (items, name, defaultVal, colorFn) => items.map(v =>
