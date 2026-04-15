@@ -1,11 +1,6 @@
 /**
  * Build script: Inject bonus tracker into index.html
- * - SEED_BONUSES constant
- * - Bonus storage functions
- * - Nav item
- * - Bonus view with import
- * - Dashboard P&L integration (Net Profit after Bonus)
- * - CSS for bonus components
+ * Uses SEPARATE version key — never touches session data
  */
 const fs = require('fs');
 const path = require('path');
@@ -13,7 +8,7 @@ const path = require('path');
 const bonuses = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'bonuses.json'), 'utf8'));
 let html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 
-// ========== 1. ADD CSS ==========
+// ========== 1. ADD CSS before PLAYER STATS CSS ==========
 const bonusCSS = `
 /* ===== BONUS TRACKER ===== */
 .bonus-layout { display:flex; flex-direction:column; gap:1.25rem; }
@@ -37,8 +32,8 @@ const bonusCSS = `
 .bonus-import-btn.danger { background:var(--red); color:#fff; margin-left:0.5rem; }
 .bonus-import-btn.danger:hover { background:#ff5a75; }
 .bonus-msg { font-size:0.78rem; margin-top:0.5rem; padding:0.5rem 0.75rem; border-radius:6px; display:none; }
-.bonus-msg.success { display:block; background:var(--green-dim); color:var(--green); }
-.bonus-msg.error { display:block; background:var(--red-dim); color:var(--red); }
+.bonus-msg.success { display:block; background:rgba(0,212,170,0.1); color:var(--green); }
+.bonus-msg.error { display:block; background:rgba(244,63,94,0.1); color:var(--red); }
 .bonus-dist-grid { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:0.75rem; }
 .bonus-dist-card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:0.85rem 1rem; text-align:center; }
 .bonus-dist-label { font-size:0.68rem; color:var(--text3); text-transform:uppercase; font-weight:600; margin-bottom:0.3rem; }
@@ -47,32 +42,27 @@ const bonusCSS = `
 @media (max-width: 900px) { .bonus-hero-row, .bonus-dist-grid { grid-template-columns:1fr 1fr; } }
 @media (max-width: 600px) { .bonus-hero-row, .bonus-dist-grid { grid-template-columns:1fr; } }
 `;
-
 const cssMarker = '/* ===== PLAYER STATS VIEW =====';
-if (html.includes(cssMarker)) {
-  html = html.replace(cssMarker, bonusCSS + '\n' + cssMarker);
-}
+html = html.replace(cssMarker, bonusCSS + '\n' + cssMarker);
 
 // ========== 2. ADD NAV ITEM ==========
-const navMarker = `    <button class="nav-item" data-view="playerstats">
-      <span class="nav-icon">&#128202;</span> Player Stats
-    </button>`;
-const navReplacement = navMarker + `
+const navMarker = /<button class="nav-item" data-view="playerstats">[\s\S]*?<\/button>/;
+const navMatch = html.match(navMarker);
+if (navMatch) {
+  html = html.replace(navMatch[0], navMatch[0] + `
     <button class="nav-item" data-view="bonuses">
       <span class="nav-icon">&#127873;</span> Bonuses
-    </button>`;
-html = html.replace(navMarker, navReplacement);
+    </button>`);
+}
 
-// ========== 3. ADD SEED_BONUSES + storage ==========
+// ========== 3. ADD SEED_BONUSES + storage (separate from sessions) ==========
 const storeMarker = "const SK = 'pokerSessions_v2';";
 const bonusStore = `const SEED_BONUSES = ${JSON.stringify(bonuses.amounts)};
 const BONUS_KEY = 'pokerBonuses_v1';
 
 function getBonuses() {
   const stored = localStorage.getItem(BONUS_KEY);
-  if (stored) {
-    try { return JSON.parse(stored); } catch(e) {}
-  }
+  if (stored) { try { return JSON.parse(stored); } catch(e) {} }
   if (SEED_BONUSES.length > 0) { saveBonuses(SEED_BONUSES); return [...SEED_BONUSES]; }
   return [];
 }
@@ -92,8 +82,7 @@ html = html.replace(storeMarker, bonusStore);
 const routeMarker = "else if (view === 'playerstats') renderPlayerStatsView(content);";
 html = html.replace(routeMarker, routeMarker + "\n  else if (view === 'bonuses') renderBonusView(content);");
 
-// ========== 5. ADD renderBonusView FUNCTION ==========
-// Insert before renderLeakFinderView
+// ========== 5. ADD renderBonusView + importBonuses FUNCTIONS ==========
 const leakFnMarker = 'function renderLeakFinderView(container) {';
 const bonusViewFn = `function renderBonusView(container) {
   const bonuses = getBonuses();
@@ -102,7 +91,6 @@ const bonusViewFn = `function renderBonusView(container) {
   const avg = count > 0 ? total / count : 0;
   const max = count > 0 ? Math.max(...bonuses) : 0;
 
-  // Categories
   const big = bonuses.filter(v => v >= 100);
   const medium = bonuses.filter(v => v >= 25 && v < 100);
   const small = bonuses.filter(v => v >= 5 && v < 25);
@@ -112,7 +100,6 @@ const bonusViewFn = `function renderBonusView(container) {
   const smlSum = small.reduce((s,v)=>s+v,0);
   const micSum = micro.reduce((s,v)=>s+v,0);
 
-  // Session P&L
   const sessions = getSessions();
   const tablePnl = sessions.reduce((s, x) => s + (x.cashOut - x.buyIn), 0);
   const totalRake = sessions.reduce((s, x) => s + (x.rake || 0), 0);
@@ -146,9 +133,8 @@ const bonusViewFn = `function renderBonusView(container) {
         </div>
       </div>
 
-      <!-- Net Result Banner -->
       <div style="background:\${netWithBonus >= 0 ? 'rgba(0,212,170,0.08)' : 'rgba(244,63,94,0.08)'}; border:1px solid \${netWithBonus >= 0 ? 'rgba(0,212,170,0.2)' : 'rgba(244,63,94,0.2)'}; border-radius:12px; padding:1.25rem 1.5rem; text-align:center">
-        <div style="font-size:0.72rem; color:var(--text3); text-transform:uppercase; letter-spacing:0.5px; font-weight:600; margin-bottom:0.5rem">\\ud83d\\udcb0 The Real Bottom Line</div>
+        <div style="font-size:0.72rem; color:var(--text3); text-transform:uppercase; letter-spacing:0.5px; font-weight:600; margin-bottom:0.5rem">The Real Bottom Line</div>
         <div style="font-size:2rem; font-weight:800; color:\${netWithBonus >= 0 ? 'var(--green)' : 'var(--red)'}">\${f(netWithBonus)} EUR</div>
         <div style="font-size:0.82rem; color:var(--text2); margin-top:0.5rem">
           Table: <span style="color:\${tablePnl >= 0 ? 'var(--green)' : 'var(--red)'}">\${f(tablePnl)}</span>
@@ -160,7 +146,6 @@ const bonusViewFn = `function renderBonusView(container) {
         </div>
       </div>
 
-      <!-- Category Breakdown -->
       <div class="bonus-dist-grid">
         <div class="bonus-dist-card" style="border-top:2px solid var(--green)">
           <div class="bonus-dist-label">Big (100+)</div>
@@ -184,39 +169,35 @@ const bonusViewFn = `function renderBonusView(container) {
         </div>
       </div>
 
-      <!-- Charts -->
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem">
         <div class="ps-card">
-          <div class="ps-card-title">\\ud83c\\udf69 Bonus Distribution</div>
+          <div class="ps-card-title">Bonus Distribution</div>
           <div style="height:260px; position:relative"><canvas id="bonus-pie"></canvas></div>
         </div>
         <div class="ps-card">
-          <div class="ps-card-title">\\ud83d\\udcca P&L Breakdown</div>
+          <div class="ps-card-title">P&L Breakdown</div>
           <div style="height:260px; position:relative"><canvas id="bonus-bar"></canvas></div>
         </div>
       </div>
 
-      <!-- Histogram -->
       <div class="ps-card">
-        <div class="ps-card-title">\\ud83d\\udcc8 Bonus Size Distribution</div>
+        <div class="ps-card-title">Bonus Size Distribution</div>
         <div style="height:260px; position:relative"><canvas id="bonus-hist"></canvas></div>
       </div>
 
-      <!-- Import Section -->
       <div class="bonus-import-area">
-        <div class="ps-card-title">\\u2795 Import New Bonuses</div>
-        <div style="font-size:0.78rem; color:var(--text3); margin-bottom:0.5rem">Paste bonus amounts, one per line. Numbers only. They will be added to your existing bonuses.</div>
+        <div class="ps-card-title">Import New Bonuses</div>
+        <div style="font-size:0.78rem; color:var(--text3); margin-bottom:0.5rem">Paste bonus amounts, one per line. They will be added to your existing bonuses.</div>
         <textarea id="bonus-import-text" placeholder="11.95\\n56.71\\n10.78\\n500\\n25\\n..."></textarea>
         <div>
-          <button class="bonus-import-btn primary" onclick="importBonuses()">\\u2795 Import Bonuses</button>
-          <button class="bonus-import-btn danger" onclick="if(confirm('Reset all bonuses to original data?')){saveBonuses([...SEED_BONUSES]);renderBonusView(document.getElementById('content'));}">\\u21ba Reset to Original</button>
+          <button class="bonus-import-btn primary" onclick="importBonuses()">Import Bonuses</button>
+          <button class="bonus-import-btn danger" onclick="if(confirm('Reset all bonuses to original data?')){saveBonuses([...SEED_BONUSES]);renderBonusView(document.getElementById('content'));}">Reset to Original</button>
         </div>
         <div id="bonus-import-msg" class="bonus-msg"></div>
       </div>
 
-      <!-- Stats Table -->
       <div class="ps-card">
-        <div class="ps-card-title">\\ud83d\\udcdd Quick Stats</div>
+        <div class="ps-card-title">Quick Stats</div>
         <table class="ps-table">
           <tbody>
             <tr><td class="ps-pos">Total Bonuses</td><td style="color:var(--green); font-weight:700">+\${fmt2(total)} EUR</td></tr>
@@ -234,90 +215,34 @@ const bonusViewFn = `function renderBonusView(container) {
     </div>
   \`;
 
-  // Charts
   setTimeout(() => {
-    // Pie chart
     const pieEl = document.getElementById('bonus-pie');
     if (pieEl) {
       activeCharts.push(new Chart(pieEl, {
         type: 'doughnut',
         data: {
           labels: ['Big (100+)', 'Medium (25-99)', 'Small (5-24)', 'Micro (<5)'],
-          datasets: [{
-            data: [bigSum, medSum, smlSum, micSum],
-            backgroundColor: ['rgba(0,212,170,0.7)', 'rgba(59,130,246,0.7)', 'rgba(245,158,11,0.7)', 'rgba(139,92,246,0.7)'],
-            borderWidth: 0
-          }]
+          datasets: [{ data: [bigSum, medSum, smlSum, micSum], backgroundColor: ['rgba(0,212,170,0.7)', 'rgba(59,130,246,0.7)', 'rgba(245,158,11,0.7)', 'rgba(139,92,246,0.7)'], borderWidth: 0 }]
         },
-        options: {
-          responsive: true, maintainAspectRatio: false,
-          plugins: {
-            legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 11 } } },
-            tooltip: { callbacks: { label: ctx => ctx.label + ': ' + ctx.parsed.toFixed(2) + ' EUR (' + (ctx.parsed / total * 100).toFixed(1) + '%)' } }
-          }
-        }
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 11 } } }, tooltip: { callbacks: { label: ctx => ctx.label + ': ' + ctx.parsed.toFixed(2) + ' EUR (' + (ctx.parsed / total * 100).toFixed(1) + '%)' } } } }
       }));
     }
-
-    // Bar chart - P&L breakdown
     const barEl = document.getElementById('bonus-bar');
     if (barEl) {
       activeCharts.push(new Chart(barEl, {
         type: 'bar',
-        data: {
-          labels: ['Table P&L', 'Bonuses', 'Rake Paid', 'Net Result'],
-          datasets: [{
-            data: [tablePnl, total, -totalRake, netWithBonus],
-            backgroundColor: [
-              tablePnl >= 0 ? 'rgba(0,212,170,0.7)' : 'rgba(244,63,94,0.7)',
-              'rgba(0,212,170,0.7)',
-              'rgba(244,63,94,0.7)',
-              netWithBonus >= 0 ? 'rgba(59,130,246,0.7)' : 'rgba(244,63,94,0.7)'
-            ],
-            borderRadius: 6
-          }]
-        },
-        options: {
-          responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => (ctx.parsed.y >= 0 ? '+' : '') + ctx.parsed.y.toFixed(2) + ' EUR' } } },
-          scales: {
-            x: { ticks: { color: '#64748b' }, grid: { display: false } },
-            y: { ticks: { color: '#64748b', callback: v => (v >= 0 ? '+' : '') + v }, grid: { color: 'rgba(255,255,255,0.05)' } }
-          }
-        }
+        data: { labels: ['Table P&L', 'Bonuses', 'Rake Paid', 'Net Result'], datasets: [{ data: [tablePnl, total, -totalRake, netWithBonus], backgroundColor: [tablePnl >= 0 ? 'rgba(0,212,170,0.7)' : 'rgba(244,63,94,0.7)', 'rgba(0,212,170,0.7)', 'rgba(244,63,94,0.7)', netWithBonus >= 0 ? 'rgba(59,130,246,0.7)' : 'rgba(244,63,94,0.7)'], borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => (ctx.parsed.y >= 0 ? '+' : '') + ctx.parsed.y.toFixed(2) + ' EUR' } } }, scales: { x: { ticks: { color: '#64748b' }, grid: { display: false } }, y: { ticks: { color: '#64748b', callback: v => (v >= 0 ? '+' : '') + v }, grid: { color: 'rgba(255,255,255,0.05)' } } } }
       }));
     }
-
-    // Histogram
     const histEl = document.getElementById('bonus-hist');
     if (histEl) {
-      const bins = [
-        { label: '<1', min:0, max:1 },
-        { label: '1-5', min:1, max:5 },
-        { label: '5-10', min:5, max:10 },
-        { label: '10-25', min:10, max:25 },
-        { label: '25-50', min:25, max:50 },
-        { label: '50-100', min:50, max:100 },
-        { label: '100-300', min:100, max:300 },
-        { label: '300-500', min:300, max:500 },
-        { label: '500+', min:500, max:Infinity }
-      ];
+      const bins = [{label:'<1',min:0,max:1},{label:'1-5',min:1,max:5},{label:'5-10',min:5,max:10},{label:'10-25',min:10,max:25},{label:'25-50',min:25,max:50},{label:'50-100',min:50,max:100},{label:'100-300',min:100,max:300},{label:'300-500',min:300,max:500},{label:'500+',min:500,max:Infinity}];
       const counts = bins.map(b => bonuses.filter(v => v >= b.min && v < b.max).length);
-      const colors = ['#8b5cf6','#8b5cf6','#f59e0b','#f59e0b','#3b82f6','#3b82f6','#00d4aa','#00d4aa','#00d4aa'];
       activeCharts.push(new Chart(histEl, {
         type: 'bar',
-        data: {
-          labels: bins.map(b => b.label),
-          datasets: [{ data: counts, backgroundColor: colors.map(c => c + 'b3'), borderRadius: 4 }]
-        },
-        options: {
-          responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.parsed.y + ' bonuses' } } },
-          scales: {
-            x: { title: { display: true, text: 'Amount (EUR)', color: '#64748b' }, ticks: { color: '#64748b' }, grid: { display: false } },
-            y: { title: { display: true, text: 'Count', color: '#64748b' }, ticks: { color: '#64748b' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-          }
-        }
+        data: { labels: bins.map(b => b.label), datasets: [{ data: counts, backgroundColor: ['#8b5cf6b3','#8b5cf6b3','#f59e0bb3','#f59e0bb3','#3b82f6b3','#3b82f6b3','#00d4aab3','#00d4aab3','#00d4aab3'], borderRadius: 4 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.parsed.y + ' bonuses' } } }, scales: { x: { title: { display: true, text: 'Amount (EUR)', color: '#64748b' }, ticks: { color: '#64748b' }, grid: { display: false } }, y: { title: { display: true, text: 'Count', color: '#64748b' }, ticks: { color: '#64748b' }, grid: { color: 'rgba(255,255,255,0.05)' } } } }
       }));
     }
   }, 50);
@@ -328,45 +253,36 @@ function importBonuses() {
   const msgEl = document.getElementById('bonus-import-msg');
   const lines = text.split(/[\\n,;]+/).map(l => l.trim()).filter(l => l.length > 0);
   const amounts = lines.map(l => parseFloat(l)).filter(n => !isNaN(n) && n > 0);
-
   if (amounts.length === 0) {
     msgEl.className = 'bonus-msg error';
     msgEl.textContent = 'No valid numbers found. Paste one number per line.';
     return;
   }
-
   const merged = addBonuses(amounts);
   msgEl.className = 'bonus-msg success';
-  msgEl.textContent = '\\u2705 Imported ' + amounts.length + ' bonuses (total: +' + amounts.reduce((s,v)=>s+v,0).toFixed(2) + ' EUR). You now have ' + merged.length + ' bonus entries.';
+  msgEl.textContent = 'Imported ' + amounts.length + ' bonuses (total: +' + amounts.reduce((s,v)=>s+v,0).toFixed(2) + ' EUR). You now have ' + merged.length + ' bonus entries.';
   document.getElementById('bonus-import-text').value = '';
-
-  // Re-render after short delay
   setTimeout(() => renderBonusView(document.getElementById('content')), 1500);
 }
 
 `;
 html = html.replace(leakFnMarker, bonusViewFn + leakFnMarker);
 
-// ========== 6. INTEGRATE BONUS INTO DASHBOARD ==========
-// Add a "Net Profit (with Bonus)" line to the dashboard hero card
-const dashHeroMarker = `<div class="hero-label">All-Time Net Profit</div>
-      <div class="hero-profit \${heroClass}">\${fmt(tp)}</div>`;
-const dashHeroReplacement = `<div class="hero-label">All-Time Net Profit</div>
-      <div class="hero-profit \${heroClass}">\${fmt(tp)}</div>
+// ========== 6. INTEGRATE BONUS INTO DASHBOARD HERO ==========
+const dashHeroRe = /(<div class="hero-label">All-Time Net Profit<\/div>\s*<div class="hero-profit [^"]*">[^<]*<\/div>)/;
+const dashMatch = html.match(dashHeroRe);
+if (dashMatch) {
+  html = html.replace(dashMatch[0], dashMatch[0] + `
       <div style="font-size:0.82rem; color:var(--text2); margin-top:0.25rem">
         With Bonus: <span style="color:\${(tp + getTotalBonus()) >= 0 ? 'var(--green)' : 'var(--red)'}; font-weight:700">\${(tp + getTotalBonus() >= 0 ? '+' : '') + (tp + getTotalBonus()).toFixed(2)}</span>
         <span style="color:var(--text3); font-size:0.72rem; margin-left:0.5rem">(+\${getTotalBonus().toFixed(2)} bonus)</span>
-      </div>`;
-html = html.replace(dashHeroMarker, dashHeroReplacement);
-
-// ========== 7. BUMP DATA_VERSION ==========
-html = html.replace(/const DATA_VERSION = \d+;/, 'const DATA_VERSION = 8;');
+      </div>`);
+}
 
 fs.writeFileSync(path.join(__dirname, 'index.html'), html, 'utf8');
-console.log('✅ Bonus tracker integrated!');
+console.log('Bonus tracker integrated!');
 console.log('File size:', html.length, 'chars');
 
-// Verify
 const checks = [
   ['SEED_BONUSES', html.includes('SEED_BONUSES')],
   ['getBonuses()', html.includes('function getBonuses()')],
@@ -375,6 +291,7 @@ const checks = [
   ['Nav item', html.includes('data-view="bonuses"')],
   ['Dashboard bonus', html.includes('getTotalBonus()')],
   ['Bonus CSS', html.includes('bonus-layout')],
-  ['DATA_VERSION=8', html.includes('DATA_VERSION = 8')],
+  ['Separate BONUS_KEY', html.includes("BONUS_KEY = 'pokerBonuses_v1'")],
+  ['No DATA_VERSION change', !html.includes('DATA_VERSION = 11')],
 ];
-checks.forEach(([name, ok]) => console.log(ok ? '  ✓' : '  ✗', name));
+checks.forEach(([name, ok]) => console.log(ok ? '  OK' : '  FAIL', name));

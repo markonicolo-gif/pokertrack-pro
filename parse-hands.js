@@ -64,7 +64,16 @@ async function parseXMLSession(text) {
   }
   if (!buyIn) buyIn = bets;
 
-  const cashOut = Math.max(0, Math.round((buyIn + (wins - bets)) * 100) / 100);
+  // Session P&L = wins - bets (authoritative, from <general> section)
+  const sessionPnL = wins - bets;
+  let cashOut = buyIn + sessionPnL;
+  if (cashOut < 0) {
+    // Player reloaded during session — adjust buyIn to include reloads
+    buyIn = Math.round((buyIn - cashOut) * 100) / 100;
+    cashOut = 0;
+  } else {
+    cashOut = Math.round(cashOut * 100) / 100;
+  }
   buyIn = Math.round(buyIn * 100) / 100;
 
   let duration = 0;
@@ -96,15 +105,20 @@ async function parseXMLSession(text) {
       const rounds = games[g].getElementsByTagName('round');
       let hasShowdown = false;
       for (let r = 0; r < rounds.length; r++) {
-        if (rounds[r].getAttribute('id') === 'showdown') { hasShowdown = true; break; }
+        const rid = rounds[r].getAttribute('id');
+        const rno = rounds[r].getAttribute('no');
+        if (rid === 'showdown' || rno === '4') { hasShowdown = true; break; }
       }
       if (hasShowdown) showdownWin += net;
       else nonShowdownWin += net;
     }
   }
   totalRake = Math.round(totalRake * 100) / 100;
+
+  // Session P&L (wins - bets from <general>) is authoritative.
+  // Keep showdown attribution from hand data, adjust non-showdown so SD + NSD = session P&L.
   showdownWin = Math.round(showdownWin * 100) / 100;
-  nonShowdownWin = Math.round(nonShowdownWin * 100) / 100;
+  nonShowdownWin = Math.round((sessionPnL - showdownWin) * 100) / 100;
 
   return {
     id: require('crypto').randomUUID(),
