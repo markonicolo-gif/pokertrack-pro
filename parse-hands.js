@@ -153,11 +153,20 @@ async function main() {
     console.log(`  ✓ ${parsed} sessions parsed, ${skipped} skipped`);
   }
 
-  // Sort by date
-  allSessions.sort((a, b) => a.date.localeCompare(b.date));
+  // Deduplicate by fingerprint (date+stakes+hands+buyIn+cashOut+duration)
+  const seen = new Set();
+  const unique = [];
+  for (const s of allSessions) {
+    const fp = `${s.date}|${s.stakes}|${s.hands}|${s.buyIn}|${s.cashOut}|${s.rake}|${s.gameType}`;
+    if (!seen.has(fp)) { seen.add(fp); unique.push(s); }
+  }
+  console.log(`\nDedup: ${allSessions.length} raw → ${unique.length} unique sessions`);
 
-  fs.writeFileSync(OUT_FILE, JSON.stringify(allSessions, null, 2));
-  console.log(`\n✅ Total: ${allSessions.length} sessions saved to data/sessions.json`);
+  // Sort by date
+  unique.sort((a, b) => a.date.localeCompare(b.date));
+
+  fs.writeFileSync(OUT_FILE, JSON.stringify(unique, null, 2));
+  console.log(`✅ Total: ${unique.length} sessions saved to data/sessions.json`);
 }
 
 main().catch(console.error);
