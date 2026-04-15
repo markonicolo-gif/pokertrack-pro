@@ -64,17 +64,15 @@ async function parseXMLSession(text) {
   }
   if (!buyIn) buyIn = bets;
 
-  // Session P&L = wins - bets (authoritative, from <general> section)
-  const sessionPnL = wins - bets;
-  let cashOut = buyIn + sessionPnL;
+  // P&L = wins - bets (from <general>) is always correct.
+  // buyIn = initial chips. cashOut = buyIn + P&L.
+  // If cashOut < 0 (reloads), increase buyIn so cashOut = 0 and P&L is preserved.
+  let cashOut = Math.round((buyIn + (wins - bets)) * 100) / 100;
+  buyIn = Math.round(buyIn * 100) / 100;
   if (cashOut < 0) {
-    // Player reloaded during session — adjust buyIn to include reloads
     buyIn = Math.round((buyIn - cashOut) * 100) / 100;
     cashOut = 0;
-  } else {
-    cashOut = Math.round(cashOut * 100) / 100;
   }
-  buyIn = Math.round(buyIn * 100) / 100;
 
   let duration = 0;
   if (games.length > 1) {
@@ -117,6 +115,7 @@ async function parseXMLSession(text) {
 
   // Session P&L (wins - bets from <general>) is authoritative.
   // Keep showdown attribution from hand data, adjust non-showdown so SD + NSD = session P&L.
+  const sessionPnL = wins - bets;
   showdownWin = Math.round(showdownWin * 100) / 100;
   nonShowdownWin = Math.round((sessionPnL - showdownWin) * 100) / 100;
 
