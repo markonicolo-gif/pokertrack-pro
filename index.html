@@ -993,7 +993,7 @@ const GK = 'pokerGoals_v2';
 const BK = 'pokerBankroll_v2';
 const LK = 'pokerLive_v2';
 
-const DATA_VERSION = 14; // v14: fix ghost-session duplicates (merge used id-diff, but seed UUIDs change per rebuild)
+const DATA_VERSION = 15; // v15: chart fixes — scatter bubble-aggregation, weekly hourly-trend, € tooltips, DoW timezone
 const DVK = 'pokerDataVersion';
 function getSessions() {
   try {
@@ -2298,7 +2298,7 @@ function renderAllCharts(container, sessions) {
     callbacks: {
       label: ctx => {
         const v = ctx.parsed?.y ?? ctx.parsed;
-        if (typeof v === 'number') return (v >= 0 ? '+' : '-') + Math.abs(v).toLocaleString('en', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+        if (typeof v === 'number') return '€' + (v >= 0 ? '+' : '-') + Math.abs(v).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         return String(v);
       }
     }
@@ -2308,7 +2308,7 @@ function renderAllCharts(container, sessions) {
     interaction: { mode: 'index', intersect: false },
     plugins: { legend: { display: false }, tooltip: tooltipDefaults },
     scales: {
-      y: { grid: gridOpts, ticks: { ...tickOpts, callback: v => (v >= 0 ? '' : '-') + Math.abs(v).toLocaleString() } },
+      y: { grid: gridOpts, ticks: { ...tickOpts, callback: v => '€' + (v >= 0 ? '' : '-') + Math.abs(v).toLocaleString() } },
       x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: tickOpts }
     }
   };
@@ -2386,7 +2386,10 @@ function renderAllCharts(container, sessions) {
   activeCharts.push(new Chart(container.querySelector('#ch-dist'), {
     type: 'bar',
     data: { labels: dL.map(b => '€'+b+'→'), datasets: [{ data: dL.map(b => buckets[b]), backgroundColor: dL.map(b => b >= 0 ? 'rgba(0,212,170,0.6)' : 'rgba(244,63,94,0.6)'), borderRadius: 4 }] },
-    options: { ...chartDefaults, scales: { y: { ...chartDefaults.scales.y, ticks: { ...tickOpts, stepSize: 1, callback: v => v } }, x: chartDefaults.scales.x } }
+    options: { ...chartDefaults,
+      plugins: { legend: { display: false }, tooltip: { ...tooltipDefaults, callbacks: { label: ctx => `${ctx.parsed.y} session${ctx.parsed.y === 1 ? '' : 's'}` } } },
+      scales: { y: { ...chartDefaults.scales.y, ticks: { ...tickOpts, stepSize: 1, callback: v => v } }, x: chartDefaults.scales.x }
+    }
   }));
 
   // 4. By Location
@@ -2410,10 +2413,10 @@ function renderAllCharts(container, sessions) {
     options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: '#64748b', padding: 12, font: { size: 11 } } }, tooltip: { callbacks: { label: ctx => ctx.label + ': ' + fmt(gV[ctx.dataIndex]) } } } }
   }));
 
-  // 6. Day of Week
+  // 6. Day of Week  — noon anchor to avoid UTC-midnight timezone drift
   const dows = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const dowTotals = Array(7).fill(0), dowCounts = Array(7).fill(0);
-  sessions.forEach(s => { const d = new Date(s.date).getDay(); dowTotals[d] += s.cashOut - s.buyIn; dowCounts[d]++; });
+  sessions.forEach(s => { const d = new Date(s.date + 'T12:00:00').getDay(); dowTotals[d] += s.cashOut - s.buyIn; dowCounts[d]++; });
   const dowAvg = dowTotals.map((t, i) => dowCounts[i] > 0 ? t / dowCounts[i] : 0);
   activeCharts.push(new Chart(container.querySelector('#ch-dow'), {
     type: 'bar',
@@ -2421,39 +2424,75 @@ function renderAllCharts(container, sessions) {
     options: chartDefaults
   }));
 
-  // 7. Scatter: Duration vs Profit — sampled when huge
-  const scatterAll = sessions.filter(s => s.duration > 0).map(s => ({ x: s.duration, y: s.cashOut - s.buyIn }));
-  const SCATTER_MAX = 1500;
-  const scatterData = scatterAll.length <= SCATTER_MAX
-    ? scatterAll
-    : (() => { const step = scatterAll.length / SCATTER_MAX; const out = []; for (let i = 0; i < scatterAll.length; i += step) out.push(scatterAll[Math.floor(i)]); return out; })();
+  // 7. Session Length vs Profit — aggregated by duration bucket (bubble size = session count)
+  // Raw scatter was useless because durations are quantized to 0.25h → vertical stripes with 8k sessions.
+  const durBuckets = new Map();
+  sessions.filter(s => s.duration > 0).forEach(s => {
+    const bucket = Math.round(s.duration * 4) / 4; // snap to 0.25h
+    let b = durBuckets.get(bucket);
+    if (!b) { b = { x: bucket, profit: 0, count: 0 }; durBuckets.set(bucket, b); }
+    b.profit += (s.cashOut - s.buyIn);
+    b.count  += 1;
+  });
+  const bubbleData = Array.from(durBuckets.values())
+    .map(b => ({ x: b.x, y: Math.round((b.profit / b.count) * 100) / 100, r: Math.max(4, Math.min(28, Math.sqrt(b.count) * 1.8)), _count: b.count, _total: b.profit }))
+    .sort((a, b) => a.x - b.x);
   activeCharts.push(new Chart(container.querySelector('#ch-scatter'), {
-    type: 'scatter',
-    data: { datasets: [{ data: scatterData, backgroundColor: scatterData.map(p => p.y >= 0 ? 'rgba(0,212,170,0.6)' : 'rgba(244,63,94,0.6)'), pointRadius: 5 }] },
-    options: { responsive: true, plugins: { legend: { display: false }, tooltip: { ...tooltipDefaults, callbacks: { label: ctx => `${ctx.parsed.x}h → ${ctx.parsed.y >= 0 ? '+' : '-'}${Math.abs(ctx.parsed.y).toLocaleString()}` } } }, scales: { x: { title: { display: true, text: 'Hours', color: '#64748b' }, grid: gridOpts, ticks: tickOpts }, y: { title: { display: true, text: 'Profit', color: '#64748b' }, ticks: { ...tickOpts, callback: v => (v >= 0 ? '' : '-') + Math.abs(v).toLocaleString() }, grid: gridOpts } } }
+    type: 'bubble',
+    data: { datasets: [{ data: bubbleData, backgroundColor: bubbleData.map(p => p.y >= 0 ? 'rgba(0,212,170,0.55)' : 'rgba(244,63,94,0.55)'), borderColor: bubbleData.map(p => p.y >= 0 ? '#00d4aa' : '#f43f5e'), borderWidth: 1 }] },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: { ...tooltipDefaults, callbacks: {
+          title: ctx => ctx[0]?.raw?.x.toFixed(2) + 'h sessions',
+          label: ctx => {
+            const p = ctx.raw;
+            return [
+              `Sessions: ${p._count}`,
+              `Avg profit: €${p.y >= 0 ? '+' : '-'}${Math.abs(p.y).toFixed(2)}`,
+              `Total: €${p._total >= 0 ? '+' : '-'}${Math.abs(p._total).toFixed(2)}`
+            ];
+          }
+        } }
+      },
+      scales: {
+        x: { title: { display: true, text: 'Duration (hours)', color: '#64748b' }, grid: gridOpts, ticks: tickOpts },
+        y: { title: { display: true, text: 'Avg Profit per Session (€)', color: '#64748b' }, ticks: { ...tickOpts, callback: v => '€' + (v >= 0 ? '' : '-') + Math.abs(v).toFixed(0) }, grid: gridOpts }
+      }
+    }
   }));
 
-  // 8. Hourly Rate Trend (rolling avg)
+  // 8. Hourly Rate Trend  — weekly €/hr when large, else rolling avg per session
   const withHours = sorted.filter(s => s.duration > 0);
-  const window = Math.max(3, Math.min(10, Math.floor(withHours.length / 4)));
-  const hrTrend = withHours.map((s, i) => {
-    if (i < window - 1) return null;
-    const slice = withHours.slice(i - window + 1, i + 1);
-    const tp = slice.reduce((sum, x) => sum + (x.cashOut - x.buyIn), 0);
-    const th = slice.reduce((sum, x) => sum + (x.duration || 0), 0);
-    return th > 0 ? tp / th : null;
-  }).filter(v => v !== null);
-  const hrLabels = withHours.slice(window - 1).map(s => s.date);
+  let hrLabels, hrTrend, hrDatasetLabel;
+  if (withHours.length > AGG_THRESHOLD) {
+    const wkAgg = aggregateByWeek(withHours);
+    hrLabels = wkAgg.map(w => w.week);
+    hrTrend  = wkAgg.map(w => w.duration > 0 ? Math.round((w.profit / w.duration) * 100) / 100 : 0);
+    hrDatasetLabel = 'Weekly €/hr';
+  } else {
+    const window = Math.max(3, Math.min(10, Math.floor(withHours.length / 4)));
+    hrTrend = withHours.map((s, i) => {
+      if (i < window - 1) return null;
+      const slice = withHours.slice(i - window + 1, i + 1);
+      const tp = slice.reduce((sum, x) => sum + (x.cashOut - x.buyIn), 0);
+      const th = slice.reduce((sum, x) => sum + (x.duration || 0), 0);
+      return th > 0 ? Math.round((tp / th) * 100) / 100 : null;
+    }).filter(v => v !== null);
+    hrLabels = withHours.slice(window - 1).map(s => s.date);
+    hrDatasetLabel = window + '-session rolling €/hr';
+  }
   activeCharts.push(new Chart(container.querySelector('#ch-hrtrend'), {
     type: 'line',
     data: {
       labels: hrLabels,
       datasets: [
-        { data: hrTrend, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.08)', fill: true, tension: 0.3, pointRadius: 2, borderWidth: 2, label: window+'-session rolling avg' },
+        { data: hrTrend, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.08)', fill: true, tension: 0.3, pointRadius: hrLabels.length < 40 ? 2 : 0, borderWidth: 2, label: hrDatasetLabel },
         { data: hrLabels.map(() => 0), borderColor: 'rgba(255,255,255,0.08)', borderDash: [4,4], borderWidth: 1, pointRadius: 0, tooltip: { enabled: false } }
       ]
     },
-    options: { ...chartDefaults, plugins: { ...chartDefaults.plugins, tooltip: { ...tooltipDefaults, filter: item => item.datasetIndex === 0, callbacks: { title: ctx => ctx[0]?.label || '', label: ctx => `/hr: ${ctx.parsed.y >= 0 ? '+' : '-'}${Math.abs(ctx.parsed.y).toFixed(2)}` } } } }
+    options: { ...chartDefaults, plugins: { ...chartDefaults.plugins, tooltip: { ...tooltipDefaults, filter: item => item.datasetIndex === 0, callbacks: { title: ctx => (withHours.length > AGG_THRESHOLD ? 'Week of ' : '') + (ctx[0]?.label || ''), label: ctx => `€${ctx.parsed.y >= 0 ? '+' : '-'}${Math.abs(ctx.parsed.y).toFixed(2)}/hr` } } } }
   }));
 
   // Rake per session (only sessions with rake data) — weekly-aggregated when large
