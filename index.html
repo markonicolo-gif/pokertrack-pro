@@ -993,16 +993,17 @@ const GK = 'pokerGoals_v2';
 const BK = 'pokerBankroll_v2';
 const LK = 'pokerLive_v2';
 
-const DATA_VERSION = 13; // v13: chart aggregation for large datasets, currency fixes, coverage banner
+const DATA_VERSION = 14; // v14: fix ghost-session duplicates (merge used id-diff, but seed UUIDs change per rebuild)
 const DVK = 'pokerDataVersion';
 function getSessions() {
   try {
     const storedVer = parseInt(localStorage.getItem(DVK)) || 0;
     const stored = JSON.parse(localStorage.getItem(SK)) || [];
     if (storedVer < DATA_VERSION && SEED_SESSIONS.length > 0) {
-      // Merge: keep user-added sessions, replace seed data
-      const seedIds = new Set(SEED_SESSIONS.map(s => s.id));
-      const userAdded = stored.filter(s => !seedIds.has(s.id));
+      // Preserve only sessions explicitly added by user (flagged with _userAdded).
+      // Previous seed batches have different UUIDs on each rebuild, so id-based
+      // diffing produced ghost duplicates (e.g. 8220 + 4521 old = 12741).
+      const userAdded = stored.filter(s => s && s._userAdded === true);
       const merged = [...SEED_SESSIONS, ...userAdded];
       merged.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
       localStorage.setItem(DVK, String(DATA_VERSION));
@@ -1015,7 +1016,7 @@ function getSessions() {
   } catch { return []; }
 }
 function saveSessions(s) { localStorage.setItem(SK, JSON.stringify(s)); }
-function addSession(s) { const arr = getSessions(); s.id = crypto.randomUUID(); arr.push(s); saveSessions(arr); return arr; }
+function addSession(s) { const arr = getSessions(); s.id = crypto.randomUUID(); s._userAdded = true; arr.push(s); saveSessions(arr); return arr; }
 function updateSession(id, updates) {
   const arr = getSessions();
   const i = arr.findIndex(s => s.id === id);
