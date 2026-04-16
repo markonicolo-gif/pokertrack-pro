@@ -64,8 +64,15 @@ async function parseXMLSession(text) {
   }
   if (!buyIn) buyIn = bets;
 
-  const cashOut = Math.max(0, Math.round((buyIn + (wins - bets)) * 100) / 100);
+  // P&L = wins - bets (from <general>) is always correct.
+  // buyIn = initial chips. cashOut = buyIn + P&L.
+  // If cashOut < 0 (reloads), increase buyIn so cashOut = 0 and P&L is preserved.
+  let cashOut = Math.round((buyIn + (wins - bets)) * 100) / 100;
   buyIn = Math.round(buyIn * 100) / 100;
+  if (cashOut < 0) {
+    buyIn = Math.round((buyIn - cashOut) * 100) / 100;
+    cashOut = 0;
+  }
 
   let duration = 0;
   if (games.length > 1) {
@@ -93,18 +100,31 @@ async function parseXMLSession(text) {
       const win = parseAmt(p.getAttribute('win') || '0');
       const bet = parseAmt(p.getAttribute('bet') || '0');
       const net = win - bet;
-      const rounds = games[g].getElementsByTagName('round');
-      let hasShowdown = false;
-      for (let r = 0; r < rounds.length; r++) {
-        if (rounds[r].getAttribute('id') === 'showdown') { hasShowdown = true; break; }
+
+      // TRUE showdown = ≥2 players have revealed pocket cards (hero's cards are
+      // always shown in the XML, so ≥1 non-hero reveal means cards went to showdown).
+      // The old rule "round no=4 exists" counted river-reached hands as showdown,
+      // but many of those end with a fold on the river — that's non-showdown.
+      let revealedPockets = 0;
+      const cardsEls = games[g].getElementsByTagName('cards');
+      for (let c = 0; c < cardsEls.length; c++) {
+        if (cardsEls[c].getAttribute('type') !== 'Pocket') continue;
+        const txt = (cardsEls[c].textContent || '').trim();
+        if (txt && !txt.startsWith('X')) revealedPockets++;
       }
+      const hasShowdown = revealedPockets >= 2;
+
       if (hasShowdown) showdownWin += net;
       else nonShowdownWin += net;
     }
   }
   totalRake = Math.round(totalRake * 100) / 100;
+
+  // Session P&L (wins - bets from <general>) is authoritative.
+  // Keep showdown attribution from hand data, adjust non-showdown so SD + NSD = session P&L.
+  const sessionPnL = wins - bets;
   showdownWin = Math.round(showdownWin * 100) / 100;
-  nonShowdownWin = Math.round(nonShowdownWin * 100) / 100;
+  nonShowdownWin = Math.round((sessionPnL - showdownWin) * 100) / 100;
 
   return {
     id: require('crypto').randomUUID(),
@@ -153,11 +173,20 @@ async function main() {
     console.log(`  ✓ ${parsed} sessions parsed, ${skipped} skipped`);
   }
 
-  // Sort by date
-  allSessions.sort((a, b) => a.date.localeCompare(b.date));
+  // Deduplicate by fingerprint (date+stakes+hands+buyIn+cashOut+duration)
+  const seen = new Set();
+  const unique = [];
+  for (const s of allSessions) {
+    const fp = `${s.date}|${s.stakes}|${s.hands}|${s.buyIn}|${s.cashOut}|${s.rake}|${s.gameType}`;
+    if (!seen.has(fp)) { seen.add(fp); unique.push(s); }
+  }
+  console.log(`\nDedup: ${allSessions.length} raw → ${unique.length} unique sessions`);
 
-  fs.writeFileSync(OUT_FILE, JSON.stringify(allSessions, null, 2));
-  console.log(`\n✅ Total: ${allSessions.length} sessions saved to data/sessions.json`);
+  // Sort by date
+  unique.sort((a, b) => a.date.localeCompare(b.date));
+
+  fs.writeFileSync(OUT_FILE, JSON.stringify(unique, null, 2));
+  console.log(`✅ Total: ${unique.length} sessions saved to data/sessions.json`);
 }
 
 main().catch(console.error);
