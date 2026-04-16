@@ -993,7 +993,7 @@ const GK = 'pokerGoals_v2';
 const BK = 'pokerBankroll_v2';
 const LK = 'pokerLive_v2';
 
-const DATA_VERSION = 12; // v12: force refresh — correct P&L (wins-bets), 8220 sessions, bonus separate
+const DATA_VERSION = 13; // v13: chart aggregation for large datasets, currency fixes, coverage banner
 const DVK = 'pokerDataVersion';
 function getSessions() {
   try {
@@ -1235,12 +1235,20 @@ const STAKES_LIST = ["1/2","1/3","2/5","5/10","10/25","25/50","0.25/0.5","0.5/1"
 function fmt(v, sign = true) {
   if (v === null || v === undefined) return '-';
   const s = sign && v > 0 ? '+' : v < 0 ? '-' : '';
-  return s + Math.abs(v).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0});
+  return s + Math.abs(v).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 function fmtHr(v) { return (v >= 0 ? '+' : '-') + Math.abs(v).toFixed(2) + '/hr'; }
 function cls(v) { return v > 0 ? 'positive' : v < 0 ? 'negative' : ''; }
 function pill(v) { return `<span class="profit-pill ${v >= 0 ? 'pos' : 'neg'}">${fmt(v)}</span>`; }
 function moodEmoji(m) { return ['😴','😐','🙂','😊','🔥'][m - 1] || '🙂'; }
+function escapeHtml(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 function calcStats(sessions) {
   if (!sessions.length) return null;
@@ -1292,7 +1300,7 @@ function calcStats(sessions) {
 function switchView(view) {
   currentView = view;
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === view));
-  const titles = { dashboard: 'Dashboard', sessions: 'Log Session', analytics: 'Analytics', live: 'Live Session', goals: 'Goals', leaks: 'Leak Finder', handlogger: 'Hand Logger', playerstats: 'Player Stats' };
+  const titles = { dashboard: 'Dashboard', sessions: 'Log Session', analytics: 'Analytics', live: 'Live Session', goals: 'Goals', leaks: 'Leak Finder', handlogger: 'Hand Logger', playerstats: 'Player Stats', bonuses: 'Bonuses' };
   document.getElementById('topbar-title').textContent = titles[view] || view;
   const content = document.getElementById('content');
   content.innerHTML = '';
@@ -1548,12 +1556,12 @@ function buildSessionForm(session, locations) {
           <datalist id="stakes-list">${STAKES_LIST.map(s => `<option value="${s}">`).join('')}</datalist>
         </div>
         <div class="form-group">
-          <label>Buy-in ($)</label>
-          <input type="number" id="f-buyIn" required min="0" step="1" placeholder="200" value="${session ? session.buyIn : ''}">
+          <label>Buy-in (€)</label>
+          <input type="number" id="f-buyIn" required min="0" step="0.01" placeholder="200" value="${session ? session.buyIn : ''}">
         </div>
         <div class="form-group">
-          <label>Cash-out ($)</label>
-          <input type="number" id="f-cashOut" required min="0" step="1" placeholder="350" value="${session ? session.cashOut : ''}">
+          <label>Cash-out (€)</label>
+          <input type="number" id="f-cashOut" required min="0" step="0.01" placeholder="350" value="${session ? session.cashOut : ''}">
         </div>
         <div class="form-group">
           <label>Duration (hours)</label>
@@ -1598,7 +1606,17 @@ function renderTable(sessions, search = '') {
   let filtered = sessions;
   if (search) {
     const q = search.toLowerCase();
-    filtered = sessions.filter(s => (s.date||'').includes(q) || (s.location||'').toLowerCase().includes(q) || (s.gameType||'').toLowerCase().includes(q) || (s.stakes||'').includes(q) || (s.notes||'').toLowerCase().includes(q));
+    filtered = sessions.filter(s => {
+      const profit = (s.cashOut - s.buyIn).toFixed(2);
+      return (s.date||'').includes(q)
+        || (s.location||'').toLowerCase().includes(q)
+        || (s.gameType||'').toLowerCase().includes(q)
+        || (s.stakes||'').includes(q)
+        || (s.notes||'').toLowerCase().includes(q)
+        || String(s.buyIn).includes(q)
+        || String(s.cashOut).includes(q)
+        || profit.includes(q);
+    });
   }
 
   const sorted = [...filtered].sort((a, b) => {
@@ -1614,7 +1632,7 @@ function renderTable(sessions, search = '') {
     { key: 'gameType', label: 'Game' }, { key: 'stakes', label: 'Stakes' },
     { key: 'buyIn', label: 'Buy-in' }, { key: 'cashOut', label: 'Cash-out' },
     { key: 'profit', label: 'Profit' }, { key: 'duration', label: 'Hours' },
-    { key: 'hourly', label: '$/hr' },
+    { key: 'hourly', label: '€/hr' },
   ];
   const arrow = k => sortCol === k ? (sortAsc ? ' ▲' : ' ▼') : '';
 
@@ -1731,13 +1749,13 @@ function renderTable(sessions, search = '') {
             <td>${s.location || '<span style="color:var(--text3)">-</span>'}</td>
             <td>${s.gameType || '<span style="color:var(--text3)">-</span>'}</td>
             <td>${s.stakes ? `<span class="badge badge-blue">${s.stakes}</span>` : '<span style="color:var(--text3)">-</span>'}</td>
-            <td>${s.buyIn.toLocaleString()}</td>
-            <td>${s.cashOut.toLocaleString()}</td>
+            <td>${s.buyIn.toFixed(2)}</td>
+            <td>${s.cashOut.toFixed(2)}</td>
             <td>${pill(p)}</td>
             <td>${s.duration || '<span style="color:var(--text3)">-</span>'}</td>
             <td class="${cls(hr)}">${hr !== null ? fmtHr(hr) : '<span style="color:var(--text3)">-</span>'}</td>
             <td>${s.mood ? moodEmoji(s.mood) : ''}</td>
-            <td class="notes-cell" title="${(s.notes||'').replace(/"/g,'&quot;')}">${s.notes || '<span style="color:var(--text3)">-</span>'}</td>
+            <td class="notes-cell" title="${escapeHtml(s.notes||'')}">${s.notes ? escapeHtml(s.notes) : '<span style="color:var(--text3)">-</span>'}</td>
             <td class="action-cell">
               <button class="btn-icon edit-btn" data-id="${s.id}" title="Edit">&#9998;</button>
               <button class="btn-icon delete-btn" data-id="${s.id}" title="Delete">&#10005;</button>
@@ -1753,8 +1771,9 @@ function renderTable(sessions, search = '') {
   }
 
   // Pagination
-  const totalPages = Math.ceil(sorted.length / pageSize);
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   currentPage = Math.min(currentPage, totalPages);
+  if (currentPage < 1) currentPage = 1;
   const start = (currentPage - 1) * pageSize;
   const paginated = bulkMode ? sorted : sorted.slice(start, start + pageSize);
 
@@ -1806,13 +1825,13 @@ function renderTable(sessions, search = '') {
       <td>${s.location || '<span style="color:var(--text3)">-</span>'}</td>
       <td>${s.gameType || '<span style="color:var(--text3)">-</span>'}</td>
       <td>${s.stakes ? `<span class="badge badge-blue">${s.stakes}</span>` : '<span style="color:var(--text3)">-</span>'}</td>
-      <td>${s.buyIn.toLocaleString()}</td>
-      <td>${s.cashOut.toLocaleString()}</td>
+      <td>${s.buyIn.toFixed(2)}</td>
+      <td>${s.cashOut.toFixed(2)}</td>
       <td>${pill(p)}</td>
       <td>${s.duration || '<span style="color:var(--text3)">-</span>'}</td>
       <td class="${cls(hr)}">${hr !== null ? fmtHr(hr) : '<span style="color:var(--text3)">-</span>'}</td>
       <td>${s.mood ? moodEmoji(s.mood) : ''}</td>
-      <td class="notes-cell" title="${(s.notes||'').replace(/"/g,'&quot;')}">${s.notes || '<span style="color:var(--text3)">-</span>'}</td>
+      <td class="notes-cell" title="${escapeHtml(s.notes||'')}">${s.notes ? escapeHtml(s.notes) : '<span style="color:var(--text3)">-</span>'}</td>
       ${bulkMode ? '' : `<td class="action-cell">
         <button class="btn-icon edit-btn" data-id="${s.id}" title="Edit">&#9998;</button>
         <button class="btn-icon delete-btn" data-id="${s.id}" title="Delete">&#10005;</button>
@@ -2239,6 +2258,33 @@ function renderAllCharts(container, sessions) {
   const sorted = [...sessions].sort((a, b) => a.date.localeCompare(b.date));
   const gridOpts = { color: 'rgba(255,255,255,0.05)' };
   const tickOpts = { color: '#64748b', font: { size: 11 } };
+
+  // Weekly aggregator — used for large datasets so charts stay readable.
+  function weekKey(dateStr) {
+    const d = new Date(dateStr);
+    if (isNaN(d)) return dateStr;
+    const dow = d.getUTCDay();
+    const monday = new Date(d);
+    monday.setUTCDate(d.getUTCDate() - ((dow + 6) % 7));
+    return monday.toISOString().slice(0, 10);
+  }
+  function aggregateByWeek(list) {
+    const map = new Map();
+    list.forEach(s => {
+      const k = weekKey(s.date);
+      let w = map.get(k);
+      if (!w) { w = { week: k, profit: 0, rake: 0, hands: 0, duration: 0, sessions: 0 }; map.set(k, w); }
+      w.profit   += (s.cashOut - s.buyIn);
+      w.rake     += (s.rake || 0);
+      w.hands    += (s.hands || 0);
+      w.duration += (s.duration || 0);
+      w.sessions += 1;
+    });
+    return Array.from(map.values()).sort((a,b) => a.week.localeCompare(b.week));
+  }
+  const AGG_THRESHOLD = 500;
+  const useWeekly = sorted.length > AGG_THRESHOLD;
+  const weekly = useWeekly ? aggregateByWeek(sorted) : null;
   const tooltipDefaults = {
     backgroundColor: 'rgba(13,17,23,0.95)',
     borderColor: 'rgba(255,255,255,0.12)',
@@ -2266,55 +2312,52 @@ function renderAllCharts(container, sessions) {
     }
   };
 
-  // 1. Cumulative Profit
+  // 1. Cumulative Profit  — weekly-aggregated if > AGG_THRESHOLD sessions
+  const cumBase = useWeekly ? weekly : sorted;
+  const cumLabels = useWeekly ? weekly.map(w => w.week) : sorted.map(s => s.date);
   let cum = 0, cumSD = 0, cumNSD = 0;
-  const cumPts = sorted.map(s => { cum += s.cashOut - s.buyIn; return cum; });
+  const cumPts = useWeekly
+    ? weekly.map(w => { cum += w.profit; return Math.round(cum * 100) / 100; })
+    : sorted.map(s => { cum += s.cashOut - s.buyIn; return cum; });
   const hasHandData = sorted.some(s => s.showdownWin !== undefined);
-  const cumSDPts  = hasHandData ? sorted.map(s => { cumSD  += (s.showdownWin  ?? 0); return Math.round(cumSD  * 100) / 100; }) : null;
-  const cumNSDPts = hasHandData ? sorted.map(s => { cumNSD += (s.nonShowdownWin ?? 0); return Math.round(cumNSD * 100) / 100; }) : null;
+  const cumSDPts = hasHandData
+    ? (useWeekly
+        ? (() => { const m = new Map(); sorted.forEach(s => { const k = weekKey(s.date); m.set(k, (m.get(k) || 0) + (s.showdownWin ?? 0)); }); return weekly.map(w => { cumSD += (m.get(w.week) || 0); return Math.round(cumSD * 100) / 100; }); })()
+        : sorted.map(s => { cumSD += (s.showdownWin ?? 0); return Math.round(cumSD * 100) / 100; }))
+    : null;
+  const cumNSDPts = hasHandData
+    ? (useWeekly
+        ? (() => { const m = new Map(); sorted.forEach(s => { const k = weekKey(s.date); m.set(k, (m.get(k) || 0) + (s.nonShowdownWin ?? 0)); }); return weekly.map(w => { cumNSD += (m.get(w.week) || 0); return Math.round(cumNSD * 100) / 100; }); })()
+        : sorted.map(s => { cumNSD += (s.nonShowdownWin ?? 0); return Math.round(cumNSD * 100) / 100; }))
+    : null;
 
-  // EV trend: Exponential Moving Average (EMA) of per-session profit, shown cumulatively
-  // This creates a smooth curve that tracks actual performance trends, not a flat line
-  const perSessionProfit = sorted.map(s => s.cashOut - s.buyIn);
-  const emaSpan = Math.max(20, Math.round(sorted.length * 0.08)); // adaptive window ~8% of sessions, min 20
-  const emaAlpha = 2 / (emaSpan + 1);
-  let ema = perSessionProfit.slice(0, Math.min(emaSpan, perSessionProfit.length)).reduce((a, b) => a + b, 0) / Math.min(emaSpan, perSessionProfit.length);
-  let emaCum = 0;
-  const evLine = perSessionProfit.map((p, i) => {
-    if (i === 0) { ema = p; }
-    else { ema = emaAlpha * p + (1 - emaAlpha) * ema; }
-    emaCum += ema;
-    return Math.round(emaCum * 100) / 100;
-  });
-
-  // Also compute a simple linear regression trend line
+  // Linear regression trend on the cumulative series
   const n = cumPts.length;
   const xMean = (n - 1) / 2;
   const yMean = cumPts.reduce((a, b) => a + b, 0) / n;
-  const slope = cumPts.reduce((s, y, i) => s + (i - xMean) * (y - yMean), 0) /
-                cumPts.reduce((s, _, i) => s + (i - xMean) ** 2, 0);
+  const denom = cumPts.reduce((s, _, i) => s + (i - xMean) ** 2, 0) || 1;
+  const slope = cumPts.reduce((s, y, i) => s + (i - xMean) * (y - yMean), 0) / denom;
   const intercept = yMean - slope * xMean;
   const trendLine = cumPts.map((_, i) => Math.round((intercept + slope * i) * 100) / 100);
 
   const cumDatasets = [
-    { label: 'Net Profit', data: cumPts, borderColor: cumPts[cumPts.length-1] >= 0 ? '#00d4aa' : '#f43f5e', backgroundColor: cumPts[cumPts.length-1] >= 0 ? 'rgba(0,212,170,0.06)' : 'rgba(244,63,94,0.06)', fill: true, tension: 0.3, pointRadius: sorted.length < 30 ? 3 : 0, pointHoverRadius: 5, borderWidth: 2 },
-    { label: 'EV Trend (EMA)', data: evLine, borderColor: '#f59e0b', backgroundColor: 'transparent', fill: false, tension: 0.4, pointRadius: 0, pointHoverRadius: 4, borderWidth: 2 },
-    { label: 'Linear Trend', data: trendLine, borderColor: 'rgba(245,158,11,0.35)', backgroundColor: 'transparent', fill: false, tension: 0, pointRadius: 0, pointHoverRadius: 0, borderWidth: 1, borderDash: [6, 4] },
-    { label: 'Zero', data: sorted.map(() => 0), borderColor: 'rgba(255,255,255,0.08)', borderDash: [4,4], borderWidth: 1, pointRadius: 0, tension: 0 },
+    { label: useWeekly ? 'Net Profit (weekly)' : 'Net Profit', data: cumPts, borderColor: cumPts[cumPts.length-1] >= 0 ? '#00d4aa' : '#f43f5e', backgroundColor: cumPts[cumPts.length-1] >= 0 ? 'rgba(0,212,170,0.06)' : 'rgba(244,63,94,0.06)', fill: true, tension: 0.3, pointRadius: cumBase.length < 30 ? 3 : 0, pointHoverRadius: 5, borderWidth: 2 },
+    { label: 'Linear Trend', data: trendLine, borderColor: 'rgba(245,158,11,0.45)', backgroundColor: 'transparent', fill: false, tension: 0, pointRadius: 0, pointHoverRadius: 0, borderWidth: 1.5, borderDash: [6, 4] },
+    { label: 'Zero', data: cumLabels.map(() => 0), borderColor: 'rgba(255,255,255,0.08)', borderDash: [4,4], borderWidth: 1, pointRadius: 0, tension: 0 },
   ];
   if (cumSDPts)  cumDatasets.splice(1, 0, { label: 'Showdown',     data: cumSDPts,  borderColor: '#3b82f6', backgroundColor: 'transparent', fill: false, tension: 0.3, pointRadius: 0, pointHoverRadius: 4, borderWidth: 1.5 });
   if (cumNSDPts) cumDatasets.splice(2, 0, { label: 'Non-showdown', data: cumNSDPts, borderColor: '#8b5cf6', backgroundColor: 'transparent', fill: false, tension: 0.3, pointRadius: 0, pointHoverRadius: 4, borderWidth: 1.5 });
 
   activeCharts.push(new Chart(container.querySelector('#ch-cum'), {
     type: 'line',
-    data: { labels: sorted.map(s => s.date), datasets: cumDatasets },
+    data: { labels: cumLabels, datasets: cumDatasets },
     options: {
       ...chartDefaults,
       plugins: {
         legend: { display: true, labels: { color: '#64748b', font: { size: 11 }, boxWidth: 24, padding: 12, filter: item => item.text !== 'Zero' } },
         tooltip: { ...tooltipDefaults, filter: item => item.dataset.label !== 'Zero', callbacks: {
-          title: ctx => ctx[0]?.label || '',
-          label: ctx => { const v = ctx.parsed.y; return `${ctx.dataset.label}: ${v >= 0 ? '+' : '-'}${Math.abs(v).toLocaleString('en', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`; }
+          title: ctx => (useWeekly ? 'Week of ' : '') + (ctx[0]?.label || ''),
+          label: ctx => { const v = ctx.parsed.y; return `${ctx.dataset.label}: €${v >= 0 ? '+' : '-'}${Math.abs(v).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
         }}
       }
     }
@@ -2341,7 +2384,7 @@ function renderAllCharts(container, sessions) {
   const dL = Object.keys(buckets).map(Number).sort((a,b)=>a-b);
   activeCharts.push(new Chart(container.querySelector('#ch-dist'), {
     type: 'bar',
-    data: { labels: dL.map(b => '$'+b+'→'), datasets: [{ data: dL.map(b => buckets[b]), backgroundColor: dL.map(b => b >= 0 ? 'rgba(0,212,170,0.6)' : 'rgba(244,63,94,0.6)'), borderRadius: 4 }] },
+    data: { labels: dL.map(b => '€'+b+'→'), datasets: [{ data: dL.map(b => buckets[b]), backgroundColor: dL.map(b => b >= 0 ? 'rgba(0,212,170,0.6)' : 'rgba(244,63,94,0.6)'), borderRadius: 4 }] },
     options: { ...chartDefaults, scales: { y: { ...chartDefaults.scales.y, ticks: { ...tickOpts, stepSize: 1, callback: v => v } }, x: chartDefaults.scales.x } }
   }));
 
@@ -2377,8 +2420,12 @@ function renderAllCharts(container, sessions) {
     options: chartDefaults
   }));
 
-  // 7. Scatter: Duration vs Profit
-  const scatterData = sessions.filter(s => s.duration > 0).map(s => ({ x: s.duration, y: s.cashOut - s.buyIn }));
+  // 7. Scatter: Duration vs Profit — sampled when huge
+  const scatterAll = sessions.filter(s => s.duration > 0).map(s => ({ x: s.duration, y: s.cashOut - s.buyIn }));
+  const SCATTER_MAX = 1500;
+  const scatterData = scatterAll.length <= SCATTER_MAX
+    ? scatterAll
+    : (() => { const step = scatterAll.length / SCATTER_MAX; const out = []; for (let i = 0; i < scatterAll.length; i += step) out.push(scatterAll[Math.floor(i)]); return out; })();
   activeCharts.push(new Chart(container.querySelector('#ch-scatter'), {
     type: 'scatter',
     data: { datasets: [{ data: scatterData, backgroundColor: scatterData.map(p => p.y >= 0 ? 'rgba(0,212,170,0.6)' : 'rgba(244,63,94,0.6)'), pointRadius: 5 }] },
@@ -2408,36 +2455,47 @@ function renderAllCharts(container, sessions) {
     options: { ...chartDefaults, plugins: { ...chartDefaults.plugins, tooltip: { ...tooltipDefaults, filter: item => item.datasetIndex === 0, callbacks: { title: ctx => ctx[0]?.label || '', label: ctx => `/hr: ${ctx.parsed.y >= 0 ? '+' : '-'}${Math.abs(ctx.parsed.y).toFixed(2)}` } } } }
   }));
 
-  // Rake per session (only sessions with rake data)
+  // Rake per session (only sessions with rake data) — weekly-aggregated when large
   const rakeSessions = sorted.filter(s => s.rake > 0);
   if (rakeSessions.length > 0) {
+    const rakeWeekly = rakeSessions.length > AGG_THRESHOLD ? aggregateByWeek(rakeSessions) : null;
+    const rakeLabels = rakeWeekly ? rakeWeekly.map(w => w.week) : rakeSessions.map(s => s.date);
+    const rakeValues = rakeWeekly ? rakeWeekly.map(w => Math.round(w.rake * 100) / 100) : rakeSessions.map(s => s.rake);
     activeCharts.push(new Chart(container.querySelector('#ch-rake'), {
       type: 'bar',
       data: {
-        labels: rakeSessions.map(s => s.date),
+        labels: rakeLabels,
         datasets: [{
-          data: rakeSessions.map(s => s.rake),
+          data: rakeValues,
           backgroundColor: 'rgba(244,63,94,0.55)',
           borderColor: '#f43f5e',
           borderWidth: 1,
           borderRadius: 4,
-          label: 'Rake'
+          label: rakeWeekly ? 'Rake (weekly)' : 'Rake'
         }]
       },
       options: {
         ...chartDefaults,
+        plugins: { ...chartDefaults.plugins, tooltip: { ...tooltipDefaults, callbacks: {
+          title: ctx => (rakeWeekly ? 'Week of ' : '') + (ctx[0]?.label || ''),
+          label: ctx => `€${ctx.parsed.y.toFixed(2)}`
+        } } },
         scales: {
-          y: { grid: gridOpts, ticks: { ...tickOpts, callback: v => (v >= 0 ? '' : '-') + Math.abs(v).toFixed(2) } },
+          y: { grid: gridOpts, ticks: { ...tickOpts, callback: v => '€' + Math.abs(v).toFixed(2) } },
           x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: tickOpts }
         }
       }
     }));
 
-    // Gross vs Net cumulative
+    // Gross vs Net cumulative — weekly-aggregated when large
     let cumNet = 0, cumGross = 0;
-    const gnLabels = sorted.map(s => s.date);
-    const netLine = sorted.map(s => { cumNet += s.cashOut - s.buyIn; return cumNet; });
-    const grossLine = sorted.map(s => { cumGross += (s.cashOut - s.buyIn) + (s.rake || 0); return cumGross; });
+    const gnLabels = useWeekly ? weekly.map(w => w.week) : sorted.map(s => s.date);
+    const netLine = useWeekly
+      ? weekly.map(w => { cumNet += w.profit; return Math.round(cumNet * 100) / 100; })
+      : sorted.map(s => { cumNet += s.cashOut - s.buyIn; return cumNet; });
+    const grossLine = useWeekly
+      ? weekly.map(w => { cumGross += w.profit + w.rake; return Math.round(cumGross * 100) / 100; })
+      : sorted.map(s => { cumGross += (s.cashOut - s.buyIn) + (s.rake || 0); return cumGross; });
 
     activeCharts.push(new Chart(container.querySelector('#ch-gross-net'), {
       type: 'line',
@@ -2508,8 +2566,8 @@ function renderLiveView(container) {
                 <datalist id="live-stakes-list">${STAKES_LIST.map(s=>`<option value="${s}">`).join('')}</datalist>
               </div>
               <div class="form-group">
-                <label>Buy-in ($)</label>
-                <input type="number" id="live-buyin" min="0" step="1" placeholder="200">
+                <label>Buy-in (€)</label>
+                <input type="number" id="live-buyin" min="0" step="0.01" placeholder="200">
               </div>
             </div>
             <button class="btn btn-primary" id="start-btn" style="width:100%;padding:0.75rem;font-size:1rem">&#9654; Start Session</button>
@@ -2522,7 +2580,7 @@ function renderLiveView(container) {
           <div class="card-title-lg" style="margin-bottom:1rem">Add-ons / Rebuys</div>
           ${live.addOns.length === 0
             ? '<div class="empty-state" style="padding:1rem"><div class="empty-sub">No add-ons yet</div></div>'
-            : live.addOns.map((a, i) => `<div class="recent-session"><div class="recent-left"><div class="recent-game">Add-on #${i+1}</div><div class="recent-meta">${new Date(a.time).toLocaleTimeString()}</div></div><div class="recent-profit positive">+$${a.amount}</div></div>`).join('')}
+            : live.addOns.map((a, i) => `<div class="recent-session"><div class="recent-left"><div class="recent-game">Add-on #${i+1}</div><div class="recent-meta">${new Date(a.time).toLocaleTimeString()}</div></div><div class="recent-profit positive">+€${a.amount.toFixed(2)}</div></div>`).join('')}
         </div>
       ` : `
         <div class="card">
@@ -2550,7 +2608,7 @@ function renderLiveView(container) {
     }, 1000);
 
     container.querySelector('#addon-btn').addEventListener('click', () => {
-      const amt = parseFloat(prompt('Add-on / Rebuy amount ($):'));
+      const amt = parseFloat(prompt('Add-on / Rebuy amount (€):'));
       if (isNaN(amt) || amt <= 0) return;
       live.addOns.push({ amount: amt, time: Date.now() });
       live.totalBuyIn += amt;
@@ -2559,7 +2617,7 @@ function renderLiveView(container) {
     });
 
     container.querySelector('#end-btn').addEventListener('click', () => {
-      const cashOut = parseFloat(prompt('Enter cash-out amount ($):'));
+      const cashOut = parseFloat(prompt('Enter cash-out amount (€):'));
       if (isNaN(cashOut) || cashOut < 0) { alert('Invalid amount'); return; }
       clearInterval(liveTimer); liveTimer = null;
       const durationMs = Date.now() - live.startTime;
@@ -2654,13 +2712,13 @@ function renderGoalsView(container) {
     <div class="section-title" style="margin-top:1.5rem">Set Goals</div>
     <div class="goals-grid">
       <div class="goal-set-card">
-        <div class="goal-set-title">&#128176; Monthly Profit Target ($)</div>
+        <div class="goal-set-title">&#128176; Monthly Profit Target (€)</div>
         <div class="form-group">
           <input type="number" id="g-monthly" min="0" step="50" placeholder="e.g. 1000" value="${goals.monthly || ''}">
         </div>
       </div>
       <div class="goal-set-card">
-        <div class="goal-set-title">&#128200; Yearly Profit Target ($)</div>
+        <div class="goal-set-title">&#128200; Yearly Profit Target (€)</div>
         <div class="form-group">
           <input type="number" id="g-yearly" min="0" step="100" placeholder="e.g. 10000" value="${goals.yearly || ''}">
         </div>
@@ -2729,7 +2787,7 @@ function detectLeaks(sessions) {
           icon: '⏳',
           description: `Sessions under 3h avg ${fmtA(sAvg)}, sessions over 3h avg ${fmtA(lAvg)}. You play worse when fatigued.`,
           data: [
-            { label: 'Short sessions (â‰¤3h)', value: fmtA(sAvg), count: short.length, positive: sAvg >= 0 },
+            { label: 'Short sessions (\u22643h)', value: fmtA(sAvg), count: short.length, positive: sAvg >= 0 },
             { label: 'Long sessions (>3h)',  value: fmtA(lAvg),  count: long.length,  positive: lAvg >= 0 },
           ],
           fix: 'Set a hard 3-hour session limit. Use a timer. Take 10-minute breaks every hour to stay sharp.',
@@ -3115,8 +3173,8 @@ function renderPlayerStatsView(container) {
           <div class="ps-card-title" style="color:var(--green)">\u2705 Good Period</div>
           <div style="font-size:0.78rem;color:var(--text3);margin-bottom:0.75rem">${gp.dates}</div>
           <div class="da-stats-grid" style="grid-template-columns:1fr 1fr">
-            <div class="da-stat-box" style="border-color:var(--green)"><div class="da-stat-label">P&L</div><div class="da-stat-val" style="color:var(--red)">${f(gp.pnl_eur)}</div></div>
-            <div class="da-stat-box" style="border-color:var(--green)"><div class="da-stat-label">bb/100</div><div class="da-stat-val" style="color:var(--red)">${fBB(gp.bb_per_100)}</div></div>
+            <div class="da-stat-box" style="border-color:var(--green)"><div class="da-stat-label">P&L</div><div class="da-stat-val" style="color:${gp.pnl_eur >= 0 ? 'var(--green)' : 'var(--red)'}">${f(gp.pnl_eur)}</div></div>
+            <div class="da-stat-box" style="border-color:var(--green)"><div class="da-stat-label">bb/100</div><div class="da-stat-val" style="color:${gp.bb_per_100 >= 0 ? 'var(--green)' : 'var(--red)'}">${fBB(gp.bb_per_100)}</div></div>
             <div class="da-stat-box"><div class="da-stat-label">Hands</div><div class="da-stat-val">${gp.hands.toLocaleString()}</div></div>
             <div class="da-stat-box"><div class="da-stat-label">Sessions</div><div class="da-stat-val">${gp.sessions.toLocaleString()}</div></div>
           </div>
@@ -3578,6 +3636,11 @@ function renderPlayerStatsView(container) {
           <div class="ps-meta-chip"><span class="mc-icon">\ud83c\udccf</span> ${D._metadata.game}</div>
           <div class="ps-meta-chip"><span class="mc-icon">\ud83d\udcc5</span> ${periodStr}</div>
           <div class="ps-meta-chip"><span class="mc-icon">\ud83d\udcb6</span> ${D._metadata.currency}</div>
+        </div>
+        <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:0.82rem;color:var(--text2);line-height:1.5">
+          ⚠️ <strong style="color:var(--gold)">Data coverage note:</strong>
+          P&amp;L, session counts, stakes, months, hours, day-of-week and tilt/multitabling analysis reflect the <strong>full dataset (${totalSessions.toLocaleString()} sessions / ${totalHands.toLocaleString()} hands)</strong>.
+          Preflop/postflop stats, opponents, hand-quality and leak analysis are computed from a <strong>${D._metadata.total_hands.toLocaleString()}-hand XML sample (${D._metadata.period})</strong> — re-run <code>build-deep-analysis.js</code> with fresh hand parsing to refresh those sections.
         </div>
         <div class="ps-tabs" id="ps-tabs">
           ${tabs.map(t => '<div class="ps-tab '+(t.id === currentTab ? 'active' : '')+'" data-tab="'+t.id+'">'+t.icon+' '+t.label+'</div>').join('')}

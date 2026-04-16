@@ -64,15 +64,8 @@ async function parseXMLSession(text) {
   }
   if (!buyIn) buyIn = bets;
 
-  // P&L = wins - bets (from <general>) is always correct.
-  // buyIn = initial chips. cashOut = buyIn + P&L.
-  // If cashOut < 0 (reloads), increase buyIn so cashOut = 0 and P&L is preserved.
-  let cashOut = Math.round((buyIn + (wins - bets)) * 100) / 100;
+  const cashOut = Math.max(0, Math.round((buyIn + (wins - bets)) * 100) / 100);
   buyIn = Math.round(buyIn * 100) / 100;
-  if (cashOut < 0) {
-    buyIn = Math.round((buyIn - cashOut) * 100) / 100;
-    cashOut = 0;
-  }
 
   let duration = 0;
   if (games.length > 1) {
@@ -103,21 +96,15 @@ async function parseXMLSession(text) {
       const rounds = games[g].getElementsByTagName('round');
       let hasShowdown = false;
       for (let r = 0; r < rounds.length; r++) {
-        const rid = rounds[r].getAttribute('id');
-        const rno = rounds[r].getAttribute('no');
-        if (rid === 'showdown' || rno === '4') { hasShowdown = true; break; }
+        if (rounds[r].getAttribute('id') === 'showdown') { hasShowdown = true; break; }
       }
       if (hasShowdown) showdownWin += net;
       else nonShowdownWin += net;
     }
   }
   totalRake = Math.round(totalRake * 100) / 100;
-
-  // Session P&L (wins - bets from <general>) is authoritative.
-  // Keep showdown attribution from hand data, adjust non-showdown so SD + NSD = session P&L.
-  const sessionPnL = wins - bets;
   showdownWin = Math.round(showdownWin * 100) / 100;
-  nonShowdownWin = Math.round((sessionPnL - showdownWin) * 100) / 100;
+  nonShowdownWin = Math.round(nonShowdownWin * 100) / 100;
 
   return {
     id: require('crypto').randomUUID(),
@@ -166,20 +153,11 @@ async function main() {
     console.log(`  ✓ ${parsed} sessions parsed, ${skipped} skipped`);
   }
 
-  // Deduplicate by fingerprint (date+stakes+hands+buyIn+cashOut+duration)
-  const seen = new Set();
-  const unique = [];
-  for (const s of allSessions) {
-    const fp = `${s.date}|${s.stakes}|${s.hands}|${s.buyIn}|${s.cashOut}|${s.rake}|${s.gameType}`;
-    if (!seen.has(fp)) { seen.add(fp); unique.push(s); }
-  }
-  console.log(`\nDedup: ${allSessions.length} raw → ${unique.length} unique sessions`);
-
   // Sort by date
-  unique.sort((a, b) => a.date.localeCompare(b.date));
+  allSessions.sort((a, b) => a.date.localeCompare(b.date));
 
-  fs.writeFileSync(OUT_FILE, JSON.stringify(unique, null, 2));
-  console.log(`✅ Total: ${unique.length} sessions saved to data/sessions.json`);
+  fs.writeFileSync(OUT_FILE, JSON.stringify(allSessions, null, 2));
+  console.log(`\n✅ Total: ${allSessions.length} sessions saved to data/sessions.json`);
 }
 
 main().catch(console.error);
