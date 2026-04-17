@@ -101,18 +101,29 @@ async function parseXMLSession(text) {
       const bet = parseAmt(p.getAttribute('bet') || '0');
       const net = win - bet;
 
-      // TRUE showdown = ≥2 players have revealed pocket cards (hero's cards are
-      // always shown in the XML, so ≥1 non-hero reveal means cards went to showdown).
-      // The old rule "round no=4 exists" counted river-reached hands as showdown,
-      // but many of those end with a fold on the river — that's non-showdown.
-      let revealedPockets = 0;
+      // PokerTracker-standard showdown for HERO:
+      //   SD ⟺ (a) hero did NOT fold, AND
+      //         (b) ≥1 OPPONENT revealed pocket cards (real showdown against hero).
+      // iPoker XML always records hero's own pocket, and opponents' pockets only
+      // when they actually showdown. If hero folded but 2 opponents showdown,
+      // that's NSD for hero (lost blinds, didn't see river) — not SD.
+      let opponentReveals = 0;
       const cardsEls = games[g].getElementsByTagName('cards');
       for (let c = 0; c < cardsEls.length; c++) {
         if (cardsEls[c].getAttribute('type') !== 'Pocket') continue;
+        const owner = cardsEls[c].getAttribute('player');
+        if (owner === nickname) continue;                  // skip hero
         const txt = (cardsEls[c].textContent || '').trim();
-        if (txt && !txt.startsWith('X')) revealedPockets++;
+        if (txt && !txt.startsWith('X')) opponentReveals++;
       }
-      const hasShowdown = revealedPockets >= 2;
+      // Did hero fold in any round? (action type="0" is fold in iPoker schema)
+      let heroFolded = false;
+      const actEls = games[g].getElementsByTagName('action');
+      for (let a = 0; a < actEls.length; a++) {
+        if (actEls[a].getAttribute('player') !== nickname) continue;
+        if (actEls[a].getAttribute('type') === '0') { heroFolded = true; break; }
+      }
+      const hasShowdown = opponentReveals >= 1 && !heroFolded;
 
       if (hasShowdown) showdownWin += net;
       else nonShowdownWin += net;
