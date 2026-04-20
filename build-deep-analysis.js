@@ -996,9 +996,25 @@ function renderPlayerStatsView(container) {
     const tPre = T.preflop || { overall:{vpip:0,pfr:0,limp_pct:0}, by_position:{} };
     const tPost = T.postflop || { computed_percentages:{ flop:{}, turn:{}, river:{} } };
     const tSessions = T.sessions || [];
-    const tournamentsHTML = T._empty || tSum.entries === 0 ? \`
-      <div class="ps-card"><div class="ps-card-title">\\ud83c\\udfc6 No tournament data found</div><div style="padding:1rem;color:var(--text2)">Drop tournament zip files into the data/ folder and re-run the parser.</div></div>
-    \` : \`
+    const tournamentsHTML = (\`
+      <!-- 📥 In-browser tournament zip importer -->
+      <div class="ps-card" id="da-tourn-import-card" style="border-color:var(--gold-dim);background:linear-gradient(135deg, rgba(245,158,11,0.05), rgba(245,158,11,0.01))">
+        <div class="ps-card-title" style="color:var(--gold)">\\ud83d\\udce5 Import Tournament Zips</div>
+        <div style="padding:0.5rem;color:var(--text2);font-size:0.85rem;margin-bottom:0.5rem">
+          Drop your Novibet tournament .zip file(s) here for an instant in-browser summary (Token vs Cash split, ITM, ROI, real-money P&L).
+          <br><span style="color:var(--text3);font-size:0.78rem">For full deep analysis (charts, by-format tables, hand stats), also drop the file onto <strong>IMPORT-TOURNAMENTS.bat</strong> in the project folder.</span>
+        </div>
+        <div id="da-tourn-drop" style="padding:1.2rem;border:2px dashed var(--gold-dim);border-radius:8px;text-align:center;cursor:pointer;background:rgba(245,158,11,0.03);transition:all 0.2s">
+          <div style="font-size:1.4rem;margin-bottom:0.3rem">\\ud83c\\udfaf</div>
+          <div id="da-tourn-drop-label" style="color:var(--text2);font-size:0.95rem">Drop tournament zip(s) here, or click to browse</div>
+          <input type="file" id="da-tourn-input" accept=".zip" multiple style="display:none">
+        </div>
+        <div id="da-tourn-import-result" style="margin-top:0.75rem"></div>
+      </div>
+
+      \${T._empty || tSum.entries === 0 ? \`
+        <div class="ps-card"><div class="ps-card-title">\\ud83c\\udfc6 No tournament data parsed yet</div><div style="padding:1rem;color:var(--text2)">Use the importer above for an instant summary, or run the parser via IMPORT-TOURNAMENTS.bat for the full deep analysis below.</div></div>
+      \` : \`
       <!-- Tournament Hero Cards -->
       <div class="ps-hero-row">
         <div class="ps-hero-card \${(tSum.real_money_pnl_eur ?? tSum.net_eur) >= 0 ? 'green' : 'red'}">
@@ -1164,7 +1180,7 @@ function renderPlayerStatsView(container) {
           </tbody>
         </table>
       </div>
-    \`;
+    \`}\`);
 
     // ========== TAB SYSTEM ==========
     const tabs = [
@@ -1271,6 +1287,137 @@ function renderPlayerStatsView(container) {
       const trendsCanvas = document.getElementById('da-trends-pnl');
       if (trendsCanvas && !weeklyCanvas) {
         // Same chart — handled above
+      }
+
+      // ===== In-browser Tournament Zip Importer =====
+      const dropZone = document.getElementById('da-tourn-drop');
+      const dropInput = document.getElementById('da-tourn-input');
+      const dropLabel = document.getElementById('da-tourn-drop-label');
+      const dropResult = document.getElementById('da-tourn-import-result');
+      if (dropZone && !dropZone._wired && window.JSZip && window.DOMParser) {
+        dropZone._wired = true;
+
+        const parseAmtT = (s) => parseFloat(String(s || '0').replace(/[^0-9.-]/g, '')) || 0;
+        const detT = (xml, tag) => {
+          const m = xml.match(new RegExp('<' + tag + '>([\\\\s\\\\S]*?)</' + tag + '>'));
+          return m ? m[1].trim() : '';
+        };
+
+        async function processZips(files) {
+          dropResult.innerHTML = '<div style="color:var(--text2);font-size:0.85rem">\\u23f3 Parsing ' + files.length + ' zip(s)...</div>';
+          const allEntries = [];
+          let skipped = 0, errors = 0;
+          const seenCodes = new Set();
+
+          for (const file of files) {
+            try {
+              const zip = await JSZip.loadAsync(file);
+              const xmlFiles = Object.values(zip.files).filter(f => !f.dir && f.name.endsWith('.xml'));
+              for (const xf of xmlFiles) {
+                try {
+                  const text = await xf.async('string');
+                  const genMatch = text.match(/<general>([\\s\\S]*?)<\\/general>/);
+                  if (!genMatch) { skipped++; continue; }
+                  const gen = genMatch[1];
+                  const tCode = detT(gen, 'tournamentcode');
+                  if (!tCode) { skipped++; continue; } // not a tournament
+                  if (seenCodes.has(tCode)) continue; // dedupe
+                  seenCodes.add(tCode);
+
+                  const tName = detT(gen, 'tournamentname') || detT(gen, 'tablename') || 'Unknown';
+                  const totalBuyin = parseAmtT(detT(gen, 'totalbuyin'));
+                  const rebuys = parseInt(detT(gen, 'rebuys')) || 0;
+                  const addon = parseInt(detT(gen, 'addon')) || 0;
+                  const totalRebuyCost = parseAmtT(detT(gen, 'totalrebuycost'));
+                  const totalAddonCost = parseAmtT(detT(gen, 'totaladdoncost'));
+                  const winAmt = parseAmtT(detT(gen, 'win'));
+                  const place = parseInt(detT(gen, 'place')) || 0;
+                  const startDate = detT(gen, 'startdate');
+                  const buyinRaw = detT(gen, 'buyin');
+                  const paidWith = /token/i.test(buyinRaw) ? 'ticket' : 'cash';
+                  const invested = totalBuyin + (rebuys * totalRebuyCost) + (addon * totalAddonCost);
+
+                  // Format classification
+                  let fmt;
+                  const tablesize = parseInt(detT(gen, 'tablesize')) || 6;
+                  if (/twister|spin/i.test(tName)) fmt = 'Spin/Twister';
+                  else if (/double\\s*or\\s*nothing|\\bdon\\b/i.test(tName)) fmt = 'DoN';
+                  else if (/\\bsat\\b|satellite|step\\s*sat/i.test(tName)) fmt = 'Satellite';
+                  else if (/sit\\s*[&n]\\s*go|\\bsng\\b|s&g/i.test(tName)) fmt = 'SnG';
+                  else if (tablesize <= 10 && !/gtd|guaranteed/i.test(tName)) fmt = 'SnG';
+                  else fmt = 'MTT';
+
+                  allEntries.push({ code: tCode, name: tName, format: fmt, totalBuyin, invested, win: winAmt, place, date: startDate, paidWith, itm: winAmt > 0 });
+                } catch(e) { errors++; }
+              }
+            } catch(e) { errors++; }
+          }
+
+          if (allEntries.length === 0) {
+            dropResult.innerHTML = '<div style="color:var(--red);padding:0.75rem;background:rgba(239,68,68,0.08);border-radius:6px;font-size:0.9rem">\\u274c No tournament sessions found in dropped file(s). Are you sure these are tournament zips (not cash)? ' + (skipped ? '(' + skipped + ' cash/other sessions skipped)' : '') + '</div>';
+            return;
+          }
+
+          // Compute summary
+          const cashE = allEntries.filter(t => t.paidWith === 'cash');
+          const tickE = allEntries.filter(t => t.paidWith === 'ticket');
+          const totalInv = allEntries.reduce((s,t) => s + t.invested, 0);
+          const totalWon = allEntries.reduce((s,t) => s + t.win, 0);
+          const cashInv = cashE.reduce((s,t) => s + t.invested, 0);
+          const cashWon = cashE.reduce((s,t) => s + t.win, 0);
+          const tickInv = tickE.reduce((s,t) => s + t.invested, 0);
+          const tickWon = tickE.reduce((s,t) => s + t.win, 0);
+          const itm = allEntries.filter(t => t.itm).length;
+          const realMoneyPnl = (cashWon - cashInv) + tickWon;
+
+          const fmtStats = {};
+          for (const t of allEntries) {
+            if (!fmtStats[t.format]) fmtStats[t.format] = { n:0, pnl:0 };
+            fmtStats[t.format].n++;
+            fmtStats[t.format].pnl += (t.paidWith === 'cash' ? (t.win - t.invested) : t.win);
+          }
+
+          const fmtRows = Object.entries(fmtStats).sort((a,b) => b[1].pnl - a[1].pnl).map(([k,v]) =>
+            '<tr><td>'+k+'</td><td>'+v.n+'</td><td class="'+(v.pnl>=0?'ps-positive':'ps-negative')+'">'+f(v.pnl)+'</td></tr>'
+          ).join('');
+
+          dropResult.innerHTML =
+            '<div style="padding:0.75rem;background:rgba(245,158,11,0.06);border:1px solid var(--gold-dim);border-radius:6px">' +
+              '<div style="font-size:0.78rem;color:var(--gold);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">\\u2728 Import Summary (browser-parsed)</div>' +
+              '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0.6rem;margin-bottom:0.75rem">' +
+                '<div><div style="color:var(--text3);font-size:0.72rem">Total Tournaments</div><div style="font-size:1.2rem;font-weight:700">'+allEntries.length+'</div></div>' +
+                '<div><div style="color:var(--text3);font-size:0.72rem">Real Money P&L</div><div style="font-size:1.2rem;font-weight:700;color:'+(realMoneyPnl>=0?'var(--green)':'var(--red)')+'">'+f(realMoneyPnl)+'</div></div>' +
+                '<div><div style="color:var(--text3);font-size:0.72rem">ITM</div><div style="font-size:1.2rem;font-weight:700">'+(allEntries.length?((itm/allEntries.length*100).toFixed(1)):'0')+'%</div><div style="font-size:0.7rem;color:var(--text3)">'+itm+' cashed</div></div>' +
+                '<div><div style="color:var(--text3);font-size:0.72rem">Cash buy-ins</div><div style="font-size:1rem;font-weight:700">'+cashE.length+'</div><div style="font-size:0.7rem;color:var(--text3)">\\u20ac'+cashInv.toFixed(2)+' in \\u2192 \\u20ac'+cashWon.toFixed(2)+' out</div></div>' +
+                '<div><div style="color:var(--text3);font-size:0.72rem">Ticket entries</div><div style="font-size:1rem;font-weight:700">'+tickE.length+'</div><div style="font-size:0.7rem;color:var(--text3)">\\u20ac'+tickInv.toFixed(2)+' value \\u2192 +\\u20ac'+tickWon.toFixed(2)+' profit</div></div>' +
+              '</div>' +
+              '<table class="ps-table" style="margin-top:0.5rem"><thead><tr><th>Format</th><th>Entries</th><th>P&L</th></tr></thead><tbody>'+fmtRows+'</tbody></table>' +
+              (errors||skipped ? '<div style="margin-top:0.5rem;font-size:0.75rem;color:var(--text3)">' + (errors?errors+' files failed. ':'') + (skipped?skipped+' non-tournament sessions skipped.':'') + '</div>' : '') +
+              '<div style="margin-top:0.6rem;padding:0.5rem;background:rgba(59,130,246,0.08);border-radius:4px;font-size:0.78rem;color:var(--text2)">\\ud83d\\udca1 Want this merged into the full deep analysis (charts, by-month, hand stats)? Drop the zip onto <strong style="color:var(--gold)">IMPORT-TOURNAMENTS.bat</strong> in your project folder.</div>' +
+            '</div>';
+
+          // Persist to localStorage
+          try {
+            const stored = JSON.parse(localStorage.getItem('browserTournamentImports') || '[]');
+            const merged = stored.concat(allEntries.map(t => ({ ...t, importedAt: Date.now() })));
+            const dedup = {};
+            for (const t of merged) dedup[t.code] = t;
+            localStorage.setItem('browserTournamentImports', JSON.stringify(Object.values(dedup)));
+          } catch(e) {}
+        }
+
+        dropZone.addEventListener('click', () => dropInput.click());
+        dropInput.addEventListener('change', (e) => { if (e.target.files.length) processZips(Array.from(e.target.files)); });
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.background = 'rgba(245,158,11,0.12)'; dropLabel.textContent = '\\ud83d\\udce5 Drop to import'; });
+        dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); dropZone.style.background = 'rgba(245,158,11,0.03)'; dropLabel.textContent = 'Drop tournament zip(s) here, or click to browse'; });
+        dropZone.addEventListener('drop', (e) => {
+          e.preventDefault();
+          dropZone.style.background = 'rgba(245,158,11,0.03)';
+          dropLabel.textContent = 'Drop tournament zip(s) here, or click to browse';
+          const files = Array.from(e.dataTransfer.files).filter(f => f.name.toLowerCase().endsWith('.zip'));
+          if (files.length) processZips(files);
+          else dropResult.innerHTML = '<div style="color:var(--red);font-size:0.85rem">Only .zip files are accepted</div>';
+        });
       }
 
       // Tournament weekly P&L chart
