@@ -228,6 +228,15 @@ async function parseSession(text) {
     const invested = totalBuyin + (rebuys * totalRebuyCost) + (addon * totalAddonCost);
     const net = winAmt - invested;
 
+    // Payment method: <buyin>Token</buyin> = paid with rakeback ticket (no real cash out)
+    // Else format like "€0 + €0.07 + €0.93" = real cash buy-in (prize+rake+bounty)
+    const buyinRaw = det(gen, 'buyin');
+    const paidWith = /token/i.test(buyinRaw) ? 'ticket' : 'cash';
+    const cashInvested = paidWith === 'cash' ? invested : 0;
+    const ticketInvested = paidWith === 'ticket' ? invested : 0;
+    // Real money P&L: cash entries count cost vs win normally; ticket entries count win as pure profit (no cash out)
+    const cashNet = paidWith === 'cash' ? net : winAmt;
+
     // Format classification from tournament name + table size
     let format;
     if (/twister|spin/i.test(tName)) format = 'Spin/Twister';
@@ -242,27 +251,28 @@ async function parseSession(text) {
       totalBuyin, rebuys, totalRebuyCost, addon, totalAddonCost,
       win: winAmt, place, gamecount, tablesize, date: startStr,
       dow, hour, ym, currency, invested, net,
+      paidWith, cashInvested, ticketInvested, cashNet,
       itm: winAmt > 0
     });
 
-    // Tournament hand stats: bbSize is unknown for tournaments (chip stacks vary)
-    // Use 1 as baseline; bb/100 for tournaments isn't meaningful so we won't use it
+    // tagg.total_pnl uses CASH-only P&L (real money out of pocket basis)
+    // Tickets that win cash = pure profit; tickets that lose = €0 cost
     tagg.total_sessions++;
-    tagg.total_pnl += net;            // tournament net (cashes - cost)
+    tagg.total_pnl += cashNet;        // real-money tournament P&L
     tagg.total_hands += games.length;
     tagg.hand_dates.push(date);
-    tagg.sessions.push({ pnl: Math.round(net*100)/100, hands: games.length, date: startStr, stakes: format, dow, hour, tablesize });
+    tagg.sessions.push({ pnl: Math.round(cashNet*100)/100, hands: games.length, date: startStr, stakes: format, dow, hour, tablesize });
     tagg.by_month[ym] = tagg.by_month[ym] || { hands:0, pnl:0, sessions:0 };
-    tagg.by_month[ym].hands += games.length; tagg.by_month[ym].pnl += net; tagg.by_month[ym].sessions++;
+    tagg.by_month[ym].hands += games.length; tagg.by_month[ym].pnl += cashNet; tagg.by_month[ym].sessions++;
     tagg.by_stakes[format] = tagg.by_stakes[format] || { hands:0, pnl:0, sessions:0 };
-    tagg.by_stakes[format].hands += games.length; tagg.by_stakes[format].pnl += net; tagg.by_stakes[format].sessions++;
-    tagg.by_dow[dow].p += net; tagg.by_dow[dow].h += games.length; tagg.by_dow[dow].s++;
+    tagg.by_stakes[format].hands += games.length; tagg.by_stakes[format].pnl += cashNet; tagg.by_stakes[format].sessions++;
+    tagg.by_dow[dow].p += cashNet; tagg.by_dow[dow].h += games.length; tagg.by_dow[dow].s++;
     tagg.by_hour[hour] = tagg.by_hour[hour] || { p:0, h:0, s:0 };
-    tagg.by_hour[hour].p += net; tagg.by_hour[hour].h += games.length; tagg.by_hour[hour].s++;
+    tagg.by_hour[hour].p += cashNet; tagg.by_hour[hour].h += games.length; tagg.by_hour[hour].s++;
     const tWeekStart = new Date(date); const tDay = tWeekStart.getDay(); const tDiff = tDay === 0 ? -6 : 1 - tDay; tWeekStart.setDate(tWeekStart.getDate() + tDiff);
     const tWkKey = tWeekStart.toISOString().slice(0,10);
     tagg.weekly[tWkKey] = tagg.weekly[tWkKey] || { hands:0, pnl:0 };
-    tagg.weekly[tWkKey].hands += games.length; tagg.weekly[tWkKey].pnl += net;
+    tagg.weekly[tWkKey].hands += games.length; tagg.weekly[tWkKey].pnl += cashNet;
 
     // Hand-level analytics with bbSize=1 (tournament chips, classifyPLO will skip Holdem cards)
     for (let g = 0; g < games.length; g++) {
@@ -1074,12 +1084,23 @@ async function main() {
   fs.writeFileSync(path.join(DATA_DIR, 'platinex_dashboard_complete.json'), JSON.stringify(out));
   console.log(`\n✅ Wrote data/platinex_dashboard_complete.json (${(fs.statSync(path.join(DATA_DIR, 'platinex_dashboard_complete.json')).size / 1024).toFixed(0)} KB)`);
   console.log(`\n=== TOURNAMENT TOTALS ===`);
-  console.log(`Tournaments entered: ${tournamentSessions.length}`);
-  console.log(`Total invested:      €${tournamentSessions.reduce((s,t) => s+t.invested, 0).toFixed(2)}`);
-  console.log(`Total cashed:        €${tournamentSessions.reduce((s,t) => s+t.win, 0).toFixed(2)}`);
-  console.log(`Net winnings:        €${tagg.total_pnl.toFixed(2)}`);
+  const cashE = tournamentSessions.filter(t => t.paidWith === 'cash');
+  const tickE = tournamentSessions.filter(t => t.paidWith === 'ticket');
+  const cashInvT = cashE.reduce((s,t)=>s+t.invested,0);
+  const tickInvT = tickE.reduce((s,t)=>s+t.invested,0);
+  const cashWonC = cashE.reduce((s,t)=>s+t.win,0);
+  const cashWonT = tickE.reduce((s,t)=>s+t.win,0);
+  console.log(`Tournaments entered: ${tournamentSessions.length} (cash buy-ins: ${cashE.length}, ticket entries: ${tickE.length})`);
+  console.log(`-- Cash buy-ins --`);
+  console.log(`  Real money invested: €${cashInvT.toFixed(2)}`);
+  console.log(`  Cashed:              €${cashWonC.toFixed(2)}`);
+  console.log(`  Net (real money):    €${(cashWonC - cashInvT).toFixed(2)}`);
+  console.log(`-- Ticket entries (€0 real money cost) --`);
+  console.log(`  Ticket value used:   €${tickInvT.toFixed(2)}  (rakeback tickets, not real €)`);
+  console.log(`  Cashed (pure profit):€${cashWonT.toFixed(2)}`);
+  console.log(`-- TOTAL real-money tournament P&L: €${tagg.total_pnl.toFixed(2)} --`);
   console.log(`Tournament hands:    ${tagg.total_hands}`);
-  console.log(`\n=== COMBINED ===`);
+  console.log(`\n=== COMBINED (real money) ===`);
   console.log(`Combined P&L:        €${(agg.total_pnl + tagg.total_pnl).toFixed(2)}`);
   console.log(`Combined hands:      ${agg.total_hands + tagg.total_hands}`);
   console.log(`Now run: node build-deep-analysis.js   to inject into index.html`);
@@ -1097,6 +1118,17 @@ function buildTournamentsSection(pct) {
   const totalInvested = T.reduce((s,t) => s + t.invested, 0);
   const totalCashed   = T.reduce((s,t) => s + t.win, 0);
   const itmCount      = T.filter(t => t.itm).length;
+
+  // === Cash vs Ticket split ===
+  const cashEntries   = T.filter(t => t.paidWith === 'cash');
+  const ticketEntries = T.filter(t => t.paidWith === 'ticket');
+  const cashInvestedT   = cashEntries.reduce((s,t) => s + t.invested, 0);   // real € spent
+  const ticketInvestedT = ticketEntries.reduce((s,t) => s + t.invested, 0); // ticket face value
+  const cashWonFromCash   = cashEntries.reduce((s,t) => s + t.win, 0);
+  const cashWonFromTicket = ticketEntries.reduce((s,t) => s + t.win, 0);    // pure profit (no cash out)
+  const realMoneyPnl = (cashWonFromCash - cashInvestedT) + cashWonFromTicket;
+  const ticketItm   = ticketEntries.filter(t => t.itm).length;
+  const cashItm     = cashEntries.filter(t => t.itm).length;
   const dates         = T.map(t => new Date(t.date.replace(/(\d{2})-(\d{2})-(\d{4}) (.+)/, '$3-$1-$2T$4'))).sort((a,b)=>a-b);
   const minDate = dates[0], maxDate = dates[dates.length-1];
 
@@ -1274,7 +1306,24 @@ function buildTournamentsSection(pct) {
       biggest_cash_eur: Math.round(biggestCash.win*100)/100,
       biggest_cash_event: biggestCash.name,
       best_finish: bestFinish.place,
-      best_finish_event: bestFinish.name
+      best_finish_event: bestFinish.name,
+
+      // === Real money vs Ticket breakdown ===
+      _payment_note: 'Token entries cost €0 real money but had ticket face value. real_money_pnl_eur is the true out-of-pocket P&L.',
+      cash_entries: cashEntries.length,
+      cash_invested_eur: Math.round(cashInvestedT*100)/100,
+      cash_won_from_cash_entries_eur: Math.round(cashWonFromCash*100)/100,
+      cash_entries_net_eur: Math.round((cashWonFromCash - cashInvestedT)*100)/100,
+      cash_entries_roi_pct: cashInvestedT > 0 ? Math.round(((cashWonFromCash - cashInvestedT)/cashInvestedT)*1000)/10 : 0,
+      cash_entries_itm_pct: pct(cashItm, cashEntries.length),
+
+      ticket_entries: ticketEntries.length,
+      ticket_value_eur: Math.round(ticketInvestedT*100)/100,
+      cash_won_from_tickets_eur: Math.round(cashWonFromTicket*100)/100,
+      ticket_conversion_pct: ticketInvestedT > 0 ? Math.round((cashWonFromTicket/ticketInvestedT)*1000)/10 : 0,
+      ticket_entries_itm_pct: pct(ticketItm, ticketEntries.length),
+
+      real_money_pnl_eur: Math.round(realMoneyPnl*100)/100
     },
     by_format: byFormatOut,
     by_buyin: byBuyin,

@@ -200,14 +200,14 @@ function renderPlayerStatsView(container) {
           <div style="display:flex;align-items:center;gap:0.75rem">
             <div style="font-size:1.6rem">\\ud83c\\udfc6</div>
             <div>
-              <div style="font-size:0.78rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em">Tournament Winnings</div>
+              <div style="font-size:0.78rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em">Tournament P&L (real money)</div>
               <div style="font-size:1.4rem;font-weight:700;color:\${tournPnl>=0?'var(--green)':'var(--red)'}">\${f(tournPnl)}</div>
+              \${(D.tournaments && D.tournaments.summary && D.tournaments.summary.ticket_entries) ? \`<div style="font-size:0.7rem;color:var(--text3);margin-top:2px">\${D.tournaments.summary.ticket_entries} ticket entries (€0 cost) + \${D.tournaments.summary.cash_entries} cash buy-ins</div>\` : ''}
             </div>
           </div>
           <div style="display:flex;gap:1.5rem;flex-wrap:wrap;font-size:0.85rem;color:var(--text2)">
             <div><span style="color:var(--text3)">Entries:</span> <strong style="color:var(--text)">\${tournSessions.toLocaleString()}</strong></div>
             <div><span style="color:var(--text3)">ITM:</span> <strong style="color:var(--text)">\${(D.tournaments && D.tournaments.summary ? D.tournaments.summary.itm_pct : 0)}%</strong></div>
-            <div><span style="color:var(--text3)">ROI:</span> <strong style="color:\${(D.tournaments && D.tournaments.summary && D.tournaments.summary.roi_pct >= 0)?'var(--green)':'var(--red)'}">\${(D.tournaments && D.tournaments.summary ? ((D.tournaments.summary.roi_pct>=0?'+':'')+D.tournaments.summary.roi_pct) : '0')}%</strong></div>
             <div><span style="color:var(--text3)">Hands:</span> <strong style="color:var(--text)">\${tournHands.toLocaleString()}</strong></div>
             <div style="color:var(--gold);font-size:0.78rem;align-self:center">Click for full tournament analysis \\u2192</div>
           </div>
@@ -1001,10 +1001,10 @@ function renderPlayerStatsView(container) {
     \` : \`
       <!-- Tournament Hero Cards -->
       <div class="ps-hero-row">
-        <div class="ps-hero-card \${tSum.net_eur >= 0 ? 'green' : 'red'}">
-          <div class="ps-hero-label">Tournament Net P&L</div>
-          <div class="ps-hero-val" style="color:\${tSum.net_eur >= 0 ? 'var(--green)' : 'var(--red)'}">\${f(tSum.net_eur)}</div>
-          <div class="ps-hero-sub">ROI: \${tSum.roi_pct >= 0 ? '+' : ''}\${tSum.roi_pct}%</div>
+        <div class="ps-hero-card \${(tSum.real_money_pnl_eur ?? tSum.net_eur) >= 0 ? 'green' : 'red'}">
+          <div class="ps-hero-label">Tournament P&L (real money)</div>
+          <div class="ps-hero-val" style="color:\${(tSum.real_money_pnl_eur ?? tSum.net_eur) >= 0 ? 'var(--green)' : 'var(--red)'}">\${f(tSum.real_money_pnl_eur ?? tSum.net_eur)}</div>
+          <div class="ps-hero-sub" style="font-size:0.72rem">Out-of-pocket basis (tickets cost €0)</div>
         </div>
         <div class="ps-hero-card blue">
           <div class="ps-hero-label">Tournaments Played</div>
@@ -1012,9 +1012,9 @@ function renderPlayerStatsView(container) {
           <div class="ps-hero-sub">\${tSum.total_hands.toLocaleString()} hands \\u00b7 \${tSum.avg_hands_per_tourn} avg</div>
         </div>
         <div class="ps-hero-card gold">
-          <div class="ps-hero-label">Total Invested / Cashed</div>
-          <div class="ps-hero-val" style="color:var(--gold);font-size:1.4rem">\${tSum.invested_eur.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} / \${tSum.cashed_eur.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-          <div class="ps-hero-sub">Avg buy-in: \\u20ac\${tSum.avg_buyin_eur}</div>
+          <div class="ps-hero-label">Cash Buy-ins / Tickets Used</div>
+          <div class="ps-hero-val" style="color:var(--gold);font-size:1.4rem">\${(tSum.cash_entries ?? 0)} / \${(tSum.ticket_entries ?? 0)}</div>
+          <div class="ps-hero-sub">Real €\${(tSum.cash_invested_eur ?? 0).toFixed(2)} + Tickets €\${(tSum.ticket_value_eur ?? 0).toFixed(2)}</div>
         </div>
         <div class="ps-hero-card purple">
           <div class="ps-hero-label">ITM Rate</div>
@@ -1022,6 +1022,43 @@ function renderPlayerStatsView(container) {
           <div class="ps-hero-sub">\${tSum.itm_count} of \${tSum.entries} cashed</div>
         </div>
       </div>
+
+      <!-- Payment Method Breakdown -->
+      \${(tSum.ticket_entries || tSum.cash_entries) ? \`
+      <div class="ps-card" style="border-color:var(--gold-dim)">
+        <div class="ps-card-title" style="color:var(--gold)">\\ud83c\\udfab Cash Buy-ins vs Rakeback Tickets</div>
+        <div style="padding:0.5rem;color:var(--text3);font-size:0.78rem;margin-bottom:0.5rem">Tickets are earned from rakeback — they cost €0 real money but have face value. Tournament cashes from tickets are pure profit.</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:0.75rem">
+          <!-- Cash -->
+          <div style="padding:0.75rem;background:rgba(34,197,94,0.04);border:1px solid var(--green-dim);border-radius:6px">
+            <div style="font-size:0.78rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.4rem">\\ud83d\\udcb0 Cash Buy-ins</div>
+            <div style="display:grid;grid-template-columns:1fr auto;gap:0.3rem 1rem;font-size:0.88rem">
+              <span style="color:var(--text2)">Entries</span><strong>\${tSum.cash_entries}</strong>
+              <span style="color:var(--text2)">Real money in</span><strong>\\u20ac\${(tSum.cash_invested_eur ?? 0).toFixed(2)}</strong>
+              <span style="color:var(--text2)">Cashed</span><strong>\\u20ac\${(tSum.cash_won_from_cash_entries_eur ?? 0).toFixed(2)}</strong>
+              <span style="color:var(--text2)">Net</span><strong style="color:\${(tSum.cash_entries_net_eur ?? 0)>=0?'var(--green)':'var(--red)'}">\${f(tSum.cash_entries_net_eur ?? 0)}</strong>
+              <span style="color:var(--text2)">ROI</span><strong style="color:\${(tSum.cash_entries_roi_pct ?? 0)>=0?'var(--green)':'var(--red)'}">\${(tSum.cash_entries_roi_pct ?? 0)>=0?'+':''}\${(tSum.cash_entries_roi_pct ?? 0)}%</strong>
+              <span style="color:var(--text2)">ITM</span><strong>\${tSum.cash_entries_itm_pct ?? 0}%</strong>
+            </div>
+          </div>
+          <!-- Ticket -->
+          <div style="padding:0.75rem;background:rgba(245,158,11,0.04);border:1px solid var(--gold-dim);border-radius:6px">
+            <div style="font-size:0.78rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.4rem">\\ud83c\\udfab Rakeback Tickets</div>
+            <div style="display:grid;grid-template-columns:1fr auto;gap:0.3rem 1rem;font-size:0.88rem">
+              <span style="color:var(--text2)">Entries</span><strong>\${tSum.ticket_entries}</strong>
+              <span style="color:var(--text2)">Ticket value used</span><strong>\\u20ac\${(tSum.ticket_value_eur ?? 0).toFixed(2)} <span style="color:var(--text3);font-size:0.7rem">(€0 real)</span></strong>
+              <span style="color:var(--text2)">Cashed (pure profit)</span><strong style="color:var(--green)">+\\u20ac\${(tSum.cash_won_from_tickets_eur ?? 0).toFixed(2)}</strong>
+              <span style="color:var(--text2)">Ticket conversion</span><strong style="color:var(--gold)">\${tSum.ticket_conversion_pct ?? 0}%</strong>
+              <span style="color:var(--text2)">ITM</span><strong>\${tSum.ticket_entries_itm_pct ?? 0}%</strong>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:0.75rem;padding:0.5rem;background:rgba(245,158,11,0.06);border-radius:4px;font-size:0.85rem">
+          \\ud83d\\udcca <strong>Real-money tournament P&L:</strong> <span style="color:\${(tSum.real_money_pnl_eur ?? 0)>=0?'var(--green)':'var(--red)'};font-weight:700">\${f(tSum.real_money_pnl_eur ?? 0)}</span>
+          <span style="color:var(--text3);font-size:0.78rem"> (cash net + ticket cashes, no €0-cost ticket losses counted)</span>
+        </div>
+      </div>
+      \` : ''}
 
       <!-- Best/Worst Highlight -->
       <div class="ps-grid-2">
