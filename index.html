@@ -1031,6 +1031,18 @@ tr:last-child td { border-bottom: none; }
 .da-mini-val { font-size:0.78rem; font-weight:700; color:var(--text); }
 @media (max-width: 900px) { .da-stats-grid { grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); } .ps-grid-3 { grid-template-columns:1fr; } }
 
+
+/* ===== DEEP ANALYSIS COMPONENTS ===== */
+.da-stats-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:0.75rem; margin-bottom:1rem; }
+.da-stat-box { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:0.85rem 1rem; text-align:center; }
+.da-stat-label { font-size:0.68rem; color:var(--text3); text-transform:uppercase; letter-spacing:0.5px; font-weight:600; margin-bottom:0.3rem; }
+.da-stat-val { font-size:1.15rem; font-weight:800; color:var(--text); }
+.da-mini-stats { display:flex; flex-direction:column; gap:0.3rem; }
+.da-mini-stats > div { display:flex; justify-content:space-between; padding:0.3rem 0; border-bottom:1px solid rgba(255,255,255,0.03); }
+.da-mini-label { font-size:0.78rem; color:var(--text2); }
+.da-mini-val { font-size:0.78rem; font-weight:700; color:var(--text); }
+@media (max-width: 900px) { .da-stats-grid { grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); } .ps-grid-3 { grid-template-columns:1fr; } }
+
 /* ===== PLAYER STATS VIEW ===== */
 .ps-layout { display:flex; flex-direction:column; gap:1.25rem; }
 .ps-section-title { font-size:0.72rem; font-weight:700; color:var(--text3); text-transform:uppercase; letter-spacing:1.2px; margin-bottom:0.5rem; }
@@ -1815,24 +1827,22 @@ function renderDashboard(container) {
 
   const tournPnl = getTournamentPnl();
   const tournBreak = _computeTournamentBreakdown();
-  const tournSess = tournBreak.baseSessions + tournBreak.browserSessions;
   const casinoWin = getCasinoWinnings();
   const grandTotal = tp + getTotalBonus() + getBetsWon() + tournPnl + casinoWin;
-  const allTimeNet = tp + tournPnl;
-  const allTimeNetClass = allTimeNet >= 0 ? 'positive' : 'negative';
-  const tournBreakdownNote = tournBreak.browserSessions > 0
-    ? `<span style="color:var(--text3);font-size:0.7rem"> (${tournBreak.baseSessions} parsed [${(tournBreak.baseRealMoney>=0?'+':'')+tournBreak.baseRealMoney.toFixed(2)}\u20ac] + ${tournBreak.browserSessions} browser-imported [${(tournBreak.browserRealMoney>=0?'+':'')+tournBreak.browserRealMoney.toFixed(2)}\u20ac] <a href="#" onclick="event.preventDefault();exportBrowserTournamentImports()" style="color:var(--gold);text-decoration:underline;cursor:pointer" title="Save as JSON to make permanent">\ud83d\udcbe save</a> \u00b7 <a href="#" onclick="event.preventDefault();clearBrowserTournamentImports()" style="color:var(--red);text-decoration:underline;cursor:pointer">clear browser</a>)</span>`
+  const grandTotalClass = grandTotal >= 0 ? 'positive' : 'negative';
+  // Browser-import warning so user knows tournament data sitting only in localStorage exists.
+  const browserWarn = tournBreak.browserSessions > 0
+    ? `<div style="font-size:0.7rem;color:var(--gold);margin-top:0.25rem">\u26a0\ufe0f ${tournBreak.browserSessions} tournament(s) only saved in browser. <a href="#" onclick="event.preventDefault();exportBrowserTournamentImports()" style="color:var(--gold);text-decoration:underline">\ud83d\udcbe export to make permanent</a> \u00b7 <a href="#" onclick="event.preventDefault();clearBrowserTournamentImports()" style="color:var(--red);text-decoration:underline">clear</a></div>`
     : '';
   container.innerHTML = `
     <div class="hero-card">
-      <div class="hero-label">All-Time Net Profit (Cash + Tournaments)</div>
-      <div class="hero-profit ${allTimeNetClass}">${fmt(allTimeNet)}</div>
-      <div style="font-size:0.78rem; color:var(--text3); margin-top:0.15rem">Cash: <span style="color:${tp>=0?'var(--green)':'var(--red)'};font-weight:700">${fmt(tp)}</span> &middot; Tournaments (real money): <span style="color:${tournPnl>=0?'var(--green)':'var(--red)'};font-weight:700" title="From ${tournSess} tournaments \u2014 tickets cost \u20ac0">${(tournPnl>=0?'+':'')+tournPnl.toFixed(2)}</span>${tournBreakdownNote}</div>
-      <div style="font-size:0.82rem; color:var(--text2); margin-top:0.5rem; display:flex; flex-wrap:wrap; gap:0.75rem; align-items:center">
+      <div class="hero-label">Total Net Profit (All Money)</div>
+      <div class="hero-profit ${grandTotalClass}">${(grandTotal>=0?'+':'') + grandTotal.toFixed(2)}</div>
+      ${browserWarn}
+      <div style="font-size:0.78rem; color:var(--text2); margin-top:0.65rem; display:flex; flex-wrap:wrap; gap:0.9rem; align-items:center" title="Components that make up the total. Tournament/cash hand-level stats live in their own sections.">
+        <span title="Click to edit. Won from rakeback tickets used on casino games." onclick="editCasinoWinnings()" style="cursor:pointer">\ud83c\udfb0 Casino: <span style="color:var(--gold); font-weight:700">+${casinoWin.toFixed(2)}</span></span>
         <span>Poker Bonus: <span style="color:var(--green); font-weight:700">+${getTotalBonus().toFixed(2)}</span></span>
         <span>Bets Won: <span style="color:var(--gold); font-weight:700">+${getBetsWon().toFixed(2)}</span></span>
-        <span title="Click to edit. Won from rakeback tickets used on casino games." onclick="editCasinoWinnings()" style="cursor:pointer">\ud83c\udfb0 Casino: <span style="color:var(--gold); font-weight:700">+${casinoWin.toFixed(2)}</span></span>
-        <span>Grand Total: <span style="color:${grandTotal >= 0 ? 'var(--green)' : 'var(--red)'}; font-weight:800">${(grandTotal >= 0 ? '+' : '') + grandTotal.toFixed(2)}</span></span>
       </div>
       <div class="hero-meta">
         <div class="hero-meta-item">Sessions: <span>${sessions.length}</span></div>
@@ -3922,30 +3932,28 @@ function renderPlayerStatsView(container) {
     const _mergedNew = mergeBrowserTournamentImports();
     // Clear any existing charts to prevent canvas reuse errors
     if (window.activeCharts) { window.activeCharts.forEach(c => { try { c.destroy(); } catch(e){} }); window.activeCharts = []; }
-    // === Combined cash + tournament totals (from injected DEEP_ANALYSIS.combined) ===
+    // === Tournament totals are intentionally NOT mixed into Player Stats Overview. ===
+    // Tournament data lives ONLY in the Tournaments tab to keep cash-game stats pure.
     const _comb = D.combined || { tournament_pnl_eur: 0, tournament_hands: 0, tournament_sessions: 0, cash_pnl_eur: totalPnl };
     const tournPnl = _comb.tournament_pnl_eur || 0;
     const tournHands = _comb.tournament_hands || 0;
     const tournSessions = _comb.tournament_sessions || 0;
-    const combinedPnl = totalPnl + tournPnl;     // overall (cash + tourn)
-    const combinedHands = totalHands + tournHands;
-    const combinedSessions = totalSessions + tournSessions;
 
-    // ========== TAB: OVERVIEW ==========
+    // ========== TAB: OVERVIEW (CASH ONLY) ==========
     const overviewHTML = `
       <div class="ps-hero-row">
-        <div class="ps-hero-card ${combinedPnl >= 0 ? 'green' : 'red'}">
-          <div class="ps-hero-label">Overall P&L (Cash + Tournaments)</div>
-          <div class="ps-hero-val" style="color:${combinedPnl >= 0 ? 'var(--green)' : 'var(--red)'}">${f(combinedPnl)}</div>
-          <div class="ps-hero-sub">Cash: <span style="color:${totalPnl>=0?'var(--green)':'var(--red)'}">${f(totalPnl)}</span> \u00b7 Tourn: <span style="color:${tournPnl>=0?'var(--green)':'var(--red)'}">${f(tournPnl)}</span></div>
+        <div class="ps-hero-card ${totalPnl >= 0 ? 'green' : 'red'}">
+          <div class="ps-hero-label">Cash P&L</div>
+          <div class="ps-hero-val" style="color:${totalPnl >= 0 ? 'var(--green)' : 'var(--red)'}">${f(totalPnl)}</div>
+          <div class="ps-hero-sub">Cash games only \u2014 see Tournaments tab</div>
         </div>
         <div class="ps-hero-card blue">
-          <div class="ps-hero-label">Total Hands</div>
-          <div class="ps-hero-val" style="color:var(--blue)">${combinedHands.toLocaleString()}</div>
-          <div class="ps-hero-sub">${totalHands.toLocaleString()} cash \u00b7 ${tournHands.toLocaleString()} tourn</div>
+          <div class="ps-hero-label">Cash Hands</div>
+          <div class="ps-hero-val" style="color:var(--blue)">${totalHands.toLocaleString()}</div>
+          <div class="ps-hero-sub">${totalSessions.toLocaleString()} sessions</div>
         </div>
         <div class="ps-hero-card gold">
-          <div class="ps-hero-label">Rake Paid</div>
+          <div class="ps-hero-label">Rake Paid (Cash)</div>
           <div class="ps-hero-val" style="color:var(--gold)">${totalRake.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
           <div class="ps-hero-sub">Avg BB: ${avgBB.toFixed(2)}</div>
         </div>
@@ -3957,23 +3965,11 @@ function renderPlayerStatsView(container) {
       </div>
 
       ${tournSessions > 0 ? `
-      <!-- Tournament summary strip (clickable to jump to tournaments tab) -->
-      <div class="ps-card" style="cursor:pointer;border-color:var(--gold-dim);background:linear-gradient(90deg, rgba(245,158,11,0.06), rgba(245,158,11,0.02))" onclick="document.querySelectorAll('.ps-tab').forEach(t => { if (t.dataset.tab === 'tournaments') t.click(); })">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.75rem;padding:0.5rem">
-          <div style="display:flex;align-items:center;gap:0.75rem">
-            <div style="font-size:1.6rem">\ud83c\udfc6</div>
-            <div>
-              <div style="font-size:0.78rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em">Tournament P&L (real money)</div>
-              <div style="font-size:1.4rem;font-weight:700;color:${tournPnl>=0?'var(--green)':'var(--red)'}">${f(tournPnl)}</div>
-              ${(D.tournaments && D.tournaments.summary && D.tournaments.summary.ticket_entries) ? `<div style="font-size:0.7rem;color:var(--text3);margin-top:2px">${D.tournaments.summary.ticket_entries} ticket entries (€0 cost) + ${D.tournaments.summary.cash_entries} cash buy-ins</div>` : ''}
-            </div>
-          </div>
-          <div style="display:flex;gap:1.5rem;flex-wrap:wrap;font-size:0.85rem;color:var(--text2)">
-            <div><span style="color:var(--text3)">Entries:</span> <strong style="color:var(--text)">${tournSessions.toLocaleString()}</strong></div>
-            <div><span style="color:var(--text3)">ITM:</span> <strong style="color:var(--text)">${(D.tournaments && D.tournaments.summary ? D.tournaments.summary.itm_pct : 0)}%</strong></div>
-            <div><span style="color:var(--text3)">Hands:</span> <strong style="color:var(--text)">${tournHands.toLocaleString()}</strong></div>
-            <div style="color:var(--gold);font-size:0.78rem;align-self:center">Click for full tournament analysis \u2192</div>
-          </div>
+      <!-- Discreet pointer to Tournaments tab. Numbers NOT shown here. -->
+      <div class="ps-card" style="cursor:pointer;border-color:var(--gold-dim);background:linear-gradient(90deg, rgba(245,158,11,0.04), rgba(245,158,11,0.01));padding:0.75rem 1rem" onclick="document.querySelectorAll('.ps-tab').forEach(t => { if (t.dataset.tab === 'tournaments') t.click(); })">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem">
+          <div style="font-size:0.85rem;color:var(--text2)">\ud83c\udfc6 Tournament data is in its own tab \u2014 cash stats above are not mixed with tournaments.</div>
+          <div style="color:var(--gold);font-size:0.78rem">Open Tournaments tab \u2192</div>
         </div>
       </div>
       ` : ''}

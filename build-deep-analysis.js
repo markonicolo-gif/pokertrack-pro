@@ -380,30 +380,28 @@ function renderPlayerStatsView(container) {
     const _mergedNew = mergeBrowserTournamentImports();
     // Clear any existing charts to prevent canvas reuse errors
     if (window.activeCharts) { window.activeCharts.forEach(c => { try { c.destroy(); } catch(e){} }); window.activeCharts = []; }
-    // === Combined cash + tournament totals (from injected DEEP_ANALYSIS.combined) ===
+    // === Tournament totals are intentionally NOT mixed into Player Stats Overview. ===
+    // Tournament data lives ONLY in the Tournaments tab to keep cash-game stats pure.
     const _comb = D.combined || { tournament_pnl_eur: 0, tournament_hands: 0, tournament_sessions: 0, cash_pnl_eur: totalPnl };
     const tournPnl = _comb.tournament_pnl_eur || 0;
     const tournHands = _comb.tournament_hands || 0;
     const tournSessions = _comb.tournament_sessions || 0;
-    const combinedPnl = totalPnl + tournPnl;     // overall (cash + tourn)
-    const combinedHands = totalHands + tournHands;
-    const combinedSessions = totalSessions + tournSessions;
 
-    // ========== TAB: OVERVIEW ==========
+    // ========== TAB: OVERVIEW (CASH ONLY) ==========
     const overviewHTML = \`
       <div class="ps-hero-row">
-        <div class="ps-hero-card \${combinedPnl >= 0 ? 'green' : 'red'}">
-          <div class="ps-hero-label">Overall P&L (Cash + Tournaments)</div>
-          <div class="ps-hero-val" style="color:\${combinedPnl >= 0 ? 'var(--green)' : 'var(--red)'}">\${f(combinedPnl)}</div>
-          <div class="ps-hero-sub">Cash: <span style="color:\${totalPnl>=0?'var(--green)':'var(--red)'}">\${f(totalPnl)}</span> \\u00b7 Tourn: <span style="color:\${tournPnl>=0?'var(--green)':'var(--red)'}">\${f(tournPnl)}</span></div>
+        <div class="ps-hero-card \${totalPnl >= 0 ? 'green' : 'red'}">
+          <div class="ps-hero-label">Cash P&L</div>
+          <div class="ps-hero-val" style="color:\${totalPnl >= 0 ? 'var(--green)' : 'var(--red)'}">\${f(totalPnl)}</div>
+          <div class="ps-hero-sub">Cash games only \\u2014 see Tournaments tab</div>
         </div>
         <div class="ps-hero-card blue">
-          <div class="ps-hero-label">Total Hands</div>
-          <div class="ps-hero-val" style="color:var(--blue)">\${combinedHands.toLocaleString()}</div>
-          <div class="ps-hero-sub">\${totalHands.toLocaleString()} cash \\u00b7 \${tournHands.toLocaleString()} tourn</div>
+          <div class="ps-hero-label">Cash Hands</div>
+          <div class="ps-hero-val" style="color:var(--blue)">\${totalHands.toLocaleString()}</div>
+          <div class="ps-hero-sub">\${totalSessions.toLocaleString()} sessions</div>
         </div>
         <div class="ps-hero-card gold">
-          <div class="ps-hero-label">Rake Paid</div>
+          <div class="ps-hero-label">Rake Paid (Cash)</div>
           <div class="ps-hero-val" style="color:var(--gold)">\${totalRake.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
           <div class="ps-hero-sub">Avg BB: \${avgBB.toFixed(2)}</div>
         </div>
@@ -415,23 +413,11 @@ function renderPlayerStatsView(container) {
       </div>
 
       \${tournSessions > 0 ? \`
-      <!-- Tournament summary strip (clickable to jump to tournaments tab) -->
-      <div class="ps-card" style="cursor:pointer;border-color:var(--gold-dim);background:linear-gradient(90deg, rgba(245,158,11,0.06), rgba(245,158,11,0.02))" onclick="document.querySelectorAll('.ps-tab').forEach(t => { if (t.dataset.tab === 'tournaments') t.click(); })">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.75rem;padding:0.5rem">
-          <div style="display:flex;align-items:center;gap:0.75rem">
-            <div style="font-size:1.6rem">\\ud83c\\udfc6</div>
-            <div>
-              <div style="font-size:0.78rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em">Tournament P&L (real money)</div>
-              <div style="font-size:1.4rem;font-weight:700;color:\${tournPnl>=0?'var(--green)':'var(--red)'}">\${f(tournPnl)}</div>
-              \${(D.tournaments && D.tournaments.summary && D.tournaments.summary.ticket_entries) ? \`<div style="font-size:0.7rem;color:var(--text3);margin-top:2px">\${D.tournaments.summary.ticket_entries} ticket entries (€0 cost) + \${D.tournaments.summary.cash_entries} cash buy-ins</div>\` : ''}
-            </div>
-          </div>
-          <div style="display:flex;gap:1.5rem;flex-wrap:wrap;font-size:0.85rem;color:var(--text2)">
-            <div><span style="color:var(--text3)">Entries:</span> <strong style="color:var(--text)">\${tournSessions.toLocaleString()}</strong></div>
-            <div><span style="color:var(--text3)">ITM:</span> <strong style="color:var(--text)">\${(D.tournaments && D.tournaments.summary ? D.tournaments.summary.itm_pct : 0)}%</strong></div>
-            <div><span style="color:var(--text3)">Hands:</span> <strong style="color:var(--text)">\${tournHands.toLocaleString()}</strong></div>
-            <div style="color:var(--gold);font-size:0.78rem;align-self:center">Click for full tournament analysis \\u2192</div>
-          </div>
+      <!-- Discreet pointer to Tournaments tab. Numbers NOT shown here. -->
+      <div class="ps-card" style="cursor:pointer;border-color:var(--gold-dim);background:linear-gradient(90deg, rgba(245,158,11,0.04), rgba(245,158,11,0.01));padding:0.75rem 1rem" onclick="document.querySelectorAll('.ps-tab').forEach(t => { if (t.dataset.tab === 'tournaments') t.click(); })">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem">
+          <div style="font-size:0.85rem;color:var(--text2)">\\ud83c\\udfc6 Tournament data is in its own tab \\u2014 cash stats above are not mixed with tournaments.</div>
+          <div style="color:var(--gold);font-size:0.78rem">Open Tournaments tab \\u2192</div>
         </div>
       </div>
       \` : ''}
