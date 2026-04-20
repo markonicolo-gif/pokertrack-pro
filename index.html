@@ -995,6 +995,18 @@ tr:last-child td { border-bottom: none; }
 .da-mini-val { font-size:0.78rem; font-weight:700; color:var(--text); }
 @media (max-width: 900px) { .da-stats-grid { grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); } .ps-grid-3 { grid-template-columns:1fr; } }
 
+
+/* ===== DEEP ANALYSIS COMPONENTS ===== */
+.da-stats-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:0.75rem; margin-bottom:1rem; }
+.da-stat-box { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:0.85rem 1rem; text-align:center; }
+.da-stat-label { font-size:0.68rem; color:var(--text3); text-transform:uppercase; letter-spacing:0.5px; font-weight:600; margin-bottom:0.3rem; }
+.da-stat-val { font-size:1.15rem; font-weight:800; color:var(--text); }
+.da-mini-stats { display:flex; flex-direction:column; gap:0.3rem; }
+.da-mini-stats > div { display:flex; justify-content:space-between; padding:0.3rem 0; border-bottom:1px solid rgba(255,255,255,0.03); }
+.da-mini-label { font-size:0.78rem; color:var(--text2); }
+.da-mini-val { font-size:0.78rem; font-weight:700; color:var(--text); }
+@media (max-width: 900px) { .da-stats-grid { grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); } .ps-grid-3 { grid-template-columns:1fr; } }
+
 /* ===== PLAYER STATS VIEW ===== */
 .ps-layout { display:flex; flex-direction:column; gap:1.25rem; }
 .ps-section-title { font-size:0.72rem; font-weight:700; color:var(--text3); text-transform:uppercase; letter-spacing:1.2px; margin-bottom:0.5rem; }
@@ -1224,23 +1236,58 @@ window.editCasinoWinnings = function() {
   location.reload();
 };
 
-// ===== TOURNAMENT P&L (from DEEP_ANALYSIS injected by build-deep-analysis.js) =====
-function getTournamentPnl() {
+// ===== TOURNAMENT P&L =====
+// Computes real-money tournament P&L LIVE from .bat-parsed sessions + browser-imported localStorage entries.
+// Real-money basis: cash entries → cashed-invested, ticket entries → cashed only (tickets cost €0).
+// Always returns the same value regardless of which view rendered last.
+function _computeTournamentBreakdown() {
+  let baseSessions = [];
   try {
-    if (typeof DEEP_ANALYSIS !== 'undefined' && DEEP_ANALYSIS && DEEP_ANALYSIS.combined) {
-      return DEEP_ANALYSIS.combined.tournament_pnl_eur || 0;
+    if (typeof DEEP_ANALYSIS !== 'undefined' && DEEP_ANALYSIS && DEEP_ANALYSIS.tournaments && DEEP_ANALYSIS.tournaments.sessions) {
+      baseSessions = DEEP_ANALYSIS.tournaments.sessions;
     }
   } catch(e){}
-  return 0;
+  let stored = [];
+  try { stored = JSON.parse(localStorage.getItem('browserTournamentImports') || '[]'); } catch(e){}
+  const baseCodes = new Set(baseSessions.map(s => s.code).filter(Boolean));
+  // Auto-prune stored entries whose codes have been promoted into base data
+  const browserNew = stored.filter(s => s.code && !baseCodes.has(s.code));
+  if (browserNew.length !== stored.length && stored.length > 0) {
+    try { localStorage.setItem('browserTournamentImports', JSON.stringify(browserNew)); } catch(e){}
+  }
+  // Compute real-money pnl for base
+  let baseRealMoney = 0;
+  for (const t of baseSessions) {
+    if (t.paidWith === 'cash') baseRealMoney += (t.cashed_eur||0) - (t.invested_eur||0);
+    else baseRealMoney += (t.cashed_eur||0); // tickets/unknown: only count winnings
+  }
+  // Compute real-money pnl for browser imports (browser-format: invested/win/paidWith)
+  let browserRealMoney = 0;
+  for (const t of browserNew) {
+    if (t.paidWith === 'cash') browserRealMoney += (t.win||0) - (t.invested||0);
+    else browserRealMoney += (t.win||0);
+  }
+  const total = Math.round((baseRealMoney + browserRealMoney) * 100) / 100;
+  return {
+    total,
+    baseRealMoney: Math.round(baseRealMoney * 100) / 100,
+    browserRealMoney: Math.round(browserRealMoney * 100) / 100,
+    baseSessions: baseSessions.length,
+    browserSessions: browserNew.length
+  };
 }
+function getTournamentPnl() { return _computeTournamentBreakdown().total; }
 function getTournamentSessionCount() {
-  try {
-    if (typeof DEEP_ANALYSIS !== 'undefined' && DEEP_ANALYSIS && DEEP_ANALYSIS.combined) {
-      return DEEP_ANALYSIS.combined.tournament_sessions || 0;
-    }
-  } catch(e){}
-  return 0;
+  const b = _computeTournamentBreakdown();
+  return b.baseSessions + b.browserSessions;
 }
+window.clearBrowserTournamentImports = function() {
+  const b = _computeTournamentBreakdown();
+  if (b.browserSessions === 0) { alert('No browser-imported tournaments to clear.'); return; }
+  if (!confirm('Remove ' + b.browserSessions + ' browser-imported tournaments worth ' + (b.browserRealMoney>=0?'+':'') + b.browserRealMoney.toFixed(2) + '\u20ac from your dashboard? (Use IMPORT-TOURNAMENTS.bat to permanently re-add them.)')) return;
+  localStorage.removeItem('browserTournamentImports');
+  location.reload();
+};
 
 const SK = 'pokerSessions_v2';
 const GK = 'pokerGoals_v2';
@@ -1717,16 +1764,20 @@ function renderDashboard(container) {
   }
 
   const tournPnl = getTournamentPnl();
-  const tournSess = getTournamentSessionCount();
+  const tournBreak = _computeTournamentBreakdown();
+  const tournSess = tournBreak.baseSessions + tournBreak.browserSessions;
   const casinoWin = getCasinoWinnings();
   const grandTotal = tp + getTotalBonus() + getBetsWon() + tournPnl + casinoWin;
   const allTimeNet = tp + tournPnl;
   const allTimeNetClass = allTimeNet >= 0 ? 'positive' : 'negative';
+  const tournBreakdownNote = tournBreak.browserSessions > 0
+    ? `<span style="color:var(--text3);font-size:0.7rem"> (${tournBreak.baseSessions} parsed [${(tournBreak.baseRealMoney>=0?'+':'')+tournBreak.baseRealMoney.toFixed(2)}\u20ac] + ${tournBreak.browserSessions} browser-imported [${(tournBreak.browserRealMoney>=0?'+':'')+tournBreak.browserRealMoney.toFixed(2)}\u20ac] <a href="#" onclick="event.preventDefault();clearBrowserTournamentImports()" style="color:var(--red);text-decoration:underline;cursor:pointer">clear browser</a>)</span>`
+    : '';
   container.innerHTML = `
     <div class="hero-card">
       <div class="hero-label">All-Time Net Profit (Cash + Tournaments)</div>
       <div class="hero-profit ${allTimeNetClass}">${fmt(allTimeNet)}</div>
-      <div style="font-size:0.78rem; color:var(--text3); margin-top:0.15rem">Cash: <span style="color:${tp>=0?'var(--green)':'var(--red)'};font-weight:700">${fmt(tp)}</span> &middot; Tournaments (real money): <span style="color:${tournPnl>=0?'var(--green)':'var(--red)'};font-weight:700" title="From ${tournSess} tournaments \u2014 tickets cost \u20ac0">${(tournPnl>=0?'+':'')+tournPnl.toFixed(2)}</span></div>
+      <div style="font-size:0.78rem; color:var(--text3); margin-top:0.15rem">Cash: <span style="color:${tp>=0?'var(--green)':'var(--red)'};font-weight:700">${fmt(tp)}</span> &middot; Tournaments (real money): <span style="color:${tournPnl>=0?'var(--green)':'var(--red)'};font-weight:700" title="From ${tournSess} tournaments \u2014 tickets cost \u20ac0">${(tournPnl>=0?'+':'')+tournPnl.toFixed(2)}</span>${tournBreakdownNote}</div>
       <div style="font-size:0.82rem; color:var(--text2); margin-top:0.5rem; display:flex; flex-wrap:wrap; gap:0.75rem; align-items:center">
         <span>Poker Bonus: <span style="color:var(--green); font-weight:700">+${getTotalBonus().toFixed(2)}</span></span>
         <span>Bets Won: <span style="color:var(--gold); font-weight:700">+${getBetsWon().toFixed(2)}</span></span>
