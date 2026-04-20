@@ -1,0 +1,31 @@
+{
+  "timestamp": "2026-04-20T22:47:38.511Z",
+  "issues": 0,
+  "recomputed": {
+    "cash": {
+      "hands": 532135,
+      "sessions": 8228,
+      "pnl": -42063.63,
+      "rake": 0
+    },
+    "tournaments": {
+      "entries": 174,
+      "hands": 6900,
+      "cash_entries": 15,
+      "cash_invested": 24,
+      "cash_won": 24.78,
+      "ticket_entries": 159,
+      "ticket_value": 6229.5,
+      "ticket_won": 3054.29,
+      "real_money_pnl": 3055.07,
+      "itm_count": 40
+    }
+  },
+  "duplicates": {
+    "hand_ids": 0,
+    "session_codes_skipped": 967,
+    "tournament_multi_entry_rows": 33
+  },
+  "corruption": 0,
+  "hero_mismatches": 0
+}
