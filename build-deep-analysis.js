@@ -12,7 +12,10 @@ delete deepData.dashboard_layout;
 let html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 
 // ========== 1. REPLACE PLAYER_STATS_DATA ==========
-const dataStart = html.indexOf('const PLAYER_STATS_DATA = {');
+// IMPORTANT: slice from the FIRST `const DEEP_ANALYSIS` to remove any prior injection,
+// so we never end up with two `const DEEP_ANALYSIS` declarations (SyntaxError → blank page).
+let dataStart = html.indexOf('const DEEP_ANALYSIS');
+if (dataStart === -1) dataStart = html.indexOf('const PLAYER_STATS_DATA = {');
 const fnStart = html.indexOf('function renderPlayerStatsView');
 if (dataStart === -1 || fnStart === -1) { console.error('Markers not found'); process.exit(1); }
 
