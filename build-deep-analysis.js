@@ -159,18 +159,27 @@ function renderPlayerStatsView(container) {
   let currentTab = 'overview';
 
   function render() {
+    // === Combined cash + tournament totals (from injected DEEP_ANALYSIS.combined) ===
+    const _comb = D.combined || { tournament_pnl_eur: 0, tournament_hands: 0, tournament_sessions: 0, cash_pnl_eur: totalPnl };
+    const tournPnl = _comb.tournament_pnl_eur || 0;
+    const tournHands = _comb.tournament_hands || 0;
+    const tournSessions = _comb.tournament_sessions || 0;
+    const combinedPnl = totalPnl + tournPnl;     // overall (cash + tourn)
+    const combinedHands = totalHands + tournHands;
+    const combinedSessions = totalSessions + tournSessions;
+
     // ========== TAB: OVERVIEW ==========
     const overviewHTML = \`
       <div class="ps-hero-row">
-        <div class="ps-hero-card \${totalPnl >= 0 ? 'green' : 'red'}">
-          <div class="ps-hero-label">Total P&L</div>
-          <div class="ps-hero-val" style="color:\${totalPnl >= 0 ? 'var(--green)' : 'var(--red)'}">\${f(totalPnl)}</div>
-          <div class="ps-hero-sub">\${fBB(bbPer100)} bb/100</div>
+        <div class="ps-hero-card \${combinedPnl >= 0 ? 'green' : 'red'}">
+          <div class="ps-hero-label">Overall P&L (Cash + Tournaments)</div>
+          <div class="ps-hero-val" style="color:\${combinedPnl >= 0 ? 'var(--green)' : 'var(--red)'}">\${f(combinedPnl)}</div>
+          <div class="ps-hero-sub">Cash: <span style="color:\${totalPnl>=0?'var(--green)':'var(--red)'}">\${f(totalPnl)}</span> \\u00b7 Tourn: <span style="color:\${tournPnl>=0?'var(--green)':'var(--red)'}">\${f(tournPnl)}</span></div>
         </div>
         <div class="ps-hero-card blue">
           <div class="ps-hero-label">Total Hands</div>
-          <div class="ps-hero-val" style="color:var(--blue)">\${totalHands.toLocaleString()}</div>
-          <div class="ps-hero-sub">\${totalSessions.toLocaleString()} sessions</div>
+          <div class="ps-hero-val" style="color:var(--blue)">\${combinedHands.toLocaleString()}</div>
+          <div class="ps-hero-sub">\${totalHands.toLocaleString()} cash \\u00b7 \${tournHands.toLocaleString()} tourn</div>
         </div>
         <div class="ps-hero-card gold">
           <div class="ps-hero-label">Rake Paid</div>
@@ -183,6 +192,28 @@ function renderPlayerStatsView(container) {
           <div class="ps-hero-sub">Gap: \${(pre.vpip - pre.pfr).toFixed(1)} pts</div>
         </div>
       </div>
+
+      \${tournSessions > 0 ? \`
+      <!-- Tournament summary strip (clickable to jump to tournaments tab) -->
+      <div class="ps-card" style="cursor:pointer;border-color:var(--gold-dim);background:linear-gradient(90deg, rgba(245,158,11,0.06), rgba(245,158,11,0.02))" onclick="document.querySelectorAll('.ps-tab').forEach(t => { if (t.dataset.tab === 'tournaments') t.click(); })">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.75rem;padding:0.5rem">
+          <div style="display:flex;align-items:center;gap:0.75rem">
+            <div style="font-size:1.6rem">\\ud83c\\udfc6</div>
+            <div>
+              <div style="font-size:0.78rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em">Tournament Winnings</div>
+              <div style="font-size:1.4rem;font-weight:700;color:\${tournPnl>=0?'var(--green)':'var(--red)'}">\${f(tournPnl)}</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:1.5rem;flex-wrap:wrap;font-size:0.85rem;color:var(--text2)">
+            <div><span style="color:var(--text3)">Entries:</span> <strong style="color:var(--text)">\${tournSessions.toLocaleString()}</strong></div>
+            <div><span style="color:var(--text3)">ITM:</span> <strong style="color:var(--text)">\${(D.tournaments && D.tournaments.summary ? D.tournaments.summary.itm_pct : 0)}%</strong></div>
+            <div><span style="color:var(--text3)">ROI:</span> <strong style="color:\${(D.tournaments && D.tournaments.summary && D.tournaments.summary.roi_pct >= 0)?'var(--green)':'var(--red)'}">\${(D.tournaments && D.tournaments.summary ? ((D.tournaments.summary.roi_pct>=0?'+':'')+D.tournaments.summary.roi_pct) : '0')}%</strong></div>
+            <div><span style="color:var(--text3)">Hands:</span> <strong style="color:var(--text)">\${tournHands.toLocaleString()}</strong></div>
+            <div style="color:var(--gold);font-size:0.78rem;align-self:center">Click for full tournament analysis \\u2192</div>
+          </div>
+        </div>
+      </div>
+      \` : ''}
 
       <!-- Key Stats Grid -->
       <div class="da-stats-grid">
@@ -953,9 +984,155 @@ function renderPlayerStatsView(container) {
       </div>
     \`;
 
+    // ========== TAB: TOURNAMENTS ==========
+    const T = D.tournaments || {};
+    const tSum = T.summary || { entries:0, invested_eur:0, cashed_eur:0, net_eur:0, roi_pct:0, itm_pct:0, total_hands:0, avg_buyin_eur:0, biggest_cash_eur:0, biggest_cash_event:'', best_finish:0, best_finish_event:'', avg_hands_per_tourn:0, itm_count:0 };
+    const tFmt = T.by_format || {};
+    const tBuy = T.by_buyin || {};
+    const tMon = T.by_month || {};
+    const tFin = T.finish_distribution || {};
+    const tTop = T.top_cashes || [];
+    const tWorst = T.worst_busts || [];
+    const tPre = T.preflop || { overall:{vpip:0,pfr:0,limp_pct:0}, by_position:{} };
+    const tPost = T.postflop || { computed_percentages:{ flop:{}, turn:{}, river:{} } };
+    const tSessions = T.sessions || [];
+    const tournamentsHTML = T._empty || tSum.entries === 0 ? \`
+      <div class="ps-card"><div class="ps-card-title">\\ud83c\\udfc6 No tournament data found</div><div style="padding:1rem;color:var(--text2)">Drop tournament zip files into the data/ folder and re-run the parser.</div></div>
+    \` : \`
+      <!-- Tournament Hero Cards -->
+      <div class="ps-hero-row">
+        <div class="ps-hero-card \${tSum.net_eur >= 0 ? 'green' : 'red'}">
+          <div class="ps-hero-label">Tournament Net P&L</div>
+          <div class="ps-hero-val" style="color:\${tSum.net_eur >= 0 ? 'var(--green)' : 'var(--red)'}">\${f(tSum.net_eur)}</div>
+          <div class="ps-hero-sub">ROI: \${tSum.roi_pct >= 0 ? '+' : ''}\${tSum.roi_pct}%</div>
+        </div>
+        <div class="ps-hero-card blue">
+          <div class="ps-hero-label">Tournaments Played</div>
+          <div class="ps-hero-val" style="color:var(--blue)">\${tSum.entries.toLocaleString()}</div>
+          <div class="ps-hero-sub">\${tSum.total_hands.toLocaleString()} hands \\u00b7 \${tSum.avg_hands_per_tourn} avg</div>
+        </div>
+        <div class="ps-hero-card gold">
+          <div class="ps-hero-label">Total Invested / Cashed</div>
+          <div class="ps-hero-val" style="color:var(--gold);font-size:1.4rem">\${tSum.invested_eur.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} / \${tSum.cashed_eur.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+          <div class="ps-hero-sub">Avg buy-in: \\u20ac\${tSum.avg_buyin_eur}</div>
+        </div>
+        <div class="ps-hero-card purple">
+          <div class="ps-hero-label">ITM Rate</div>
+          <div class="ps-hero-val" style="color:var(--purple)">\${tSum.itm_pct}%</div>
+          <div class="ps-hero-sub">\${tSum.itm_count} of \${tSum.entries} cashed</div>
+        </div>
+      </div>
+
+      <!-- Best/Worst Highlight -->
+      <div class="ps-grid-2">
+        <div class="ps-card" style="border-color:var(--green-dim)">
+          <div class="ps-card-title" style="color:var(--green)">\\ud83c\\udfc6 Biggest Cash</div>
+          <div style="padding:0.5rem"><div style="font-size:1.6rem;color:var(--green);font-weight:700">+\\u20ac\${tSum.biggest_cash_eur}</div><div style="color:var(--text2);font-size:0.9rem;margin-top:0.25rem">\${tSum.biggest_cash_event}</div></div>
+        </div>
+        <div class="ps-card" style="border-color:var(--gold-dim)">
+          <div class="ps-card-title" style="color:var(--gold)">\\u2b50 Best Finish</div>
+          <div style="padding:0.5rem"><div style="font-size:1.6rem;color:var(--gold);font-weight:700">#\${tSum.best_finish}</div><div style="color:var(--text2);font-size:0.9rem;margin-top:0.25rem">\${tSum.best_finish_event}</div></div>
+        </div>
+      </div>
+
+      <!-- Tournament Cumulative P&L Chart -->
+      <div class="ps-card">
+        <div class="ps-card-title">\\ud83d\\udcc8 Tournament Cumulative P&L (Weekly)</div>
+        <div style="height:260px;position:relative"><canvas id="da-tourn-pnl"></canvas></div>
+      </div>
+
+      <!-- By Format -->
+      <div class="ps-card">
+        <div class="ps-card-title">\\ud83c\\udfb2 Performance by Format</div>
+        <table class="ps-table">
+          <thead><tr><th>Format</th><th>Entries</th><th>Avg Buy-in</th><th>Invested</th><th>Cashed</th><th>Net</th><th>ROI</th><th>ITM%</th><th>Hands</th></tr></thead>
+          <tbody>
+            \${Object.entries(tFmt).sort((a,b) => b[1].entries - a[1].entries).map(([fmt, v]) => '<tr><td class="ps-pos">'+fmt+'</td><td>'+v.entries+'</td><td>\\u20ac'+v.avg_buyin_eur+'</td><td>\\u20ac'+v.invested_eur.toFixed(2)+'</td><td>\\u20ac'+v.cashed_eur.toFixed(2)+'</td><td class="'+c(v.net_eur)+'">'+f(v.net_eur)+'</td><td class="'+(v.roi_pct>=0?'ps-positive':'ps-negative')+'">'+(v.roi_pct>=0?'+':'')+v.roi_pct+'%</td><td>'+v.itm_pct+'%</td><td>'+v.hands.toLocaleString()+'</td></tr>').join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- By Buy-in Level -->
+      <div class="ps-card">
+        <div class="ps-card-title">\\ud83d\\udcb0 Performance by Buy-in Level</div>
+        <table class="ps-table">
+          <thead><tr><th>Buy-in Range</th><th>Entries</th><th>Invested</th><th>Cashed</th><th>Net</th><th>ROI</th><th>ITM%</th><th>Hands</th></tr></thead>
+          <tbody>
+            \${Object.entries(tBuy).map(([bl, v]) => '<tr><td class="ps-pos">'+bl+'</td><td>'+v.entries+'</td><td>\\u20ac'+v.invested_eur.toFixed(2)+'</td><td>\\u20ac'+v.cashed_eur.toFixed(2)+'</td><td class="'+c(v.net_eur)+'">'+f(v.net_eur)+'</td><td class="'+(v.roi_pct>=0?'ps-positive':'ps-negative')+'">'+(v.roi_pct>=0?'+':'')+v.roi_pct+'%</td><td>'+v.itm_pct+'%</td><td>'+v.hands.toLocaleString()+'</td></tr>').join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- By Month -->
+      <div class="ps-grid-2">
+        <div class="ps-card">
+          <div class="ps-card-title">\\ud83d\\udcc5 Tournament P&L by Month</div>
+          <table class="ps-table"><thead><tr><th>Month</th><th>Entries</th><th>Invested</th><th>Cashed</th><th>Net</th><th>ROI</th></tr></thead><tbody>
+            \${Object.entries(tMon).sort().map(([ym, v]) => { const [y,m] = ym.split('-'); const moNms = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return '<tr><td class="ps-pos">'+moNms[parseInt(m)-1]+' '+y+'</td><td>'+v.entries+'</td><td>\\u20ac'+v.invested_eur.toFixed(2)+'</td><td>\\u20ac'+v.cashed_eur.toFixed(2)+'</td><td class="'+c(v.net_eur)+'">'+f(v.net_eur)+'</td><td class="'+(v.roi_pct>=0?'ps-positive':'ps-negative')+'">'+(v.roi_pct>=0?'+':'')+v.roi_pct+'%</td></tr>'; }).join('')}
+          </tbody></table>
+        </div>
+        <div class="ps-card">
+          <div class="ps-card-title">\\ud83c\\udfaf Finish Position Distribution</div>
+          <table class="ps-table"><thead><tr><th>Finish</th><th>Count</th><th>%</th><th>Avg Cash</th></tr></thead><tbody>
+            \${Object.entries(tFin).map(([lbl, v]) => '<tr><td class="ps-pos">'+lbl+'</td><td>'+v.count+'</td><td>'+v.pct+'%</td><td>'+(v.avg_cash > 0 ? '\\u20ac'+v.avg_cash : '\\u2014')+'</td></tr>').join('')}
+          </tbody></table>
+        </div>
+      </div>
+
+      <!-- Top Cashes -->
+      <div class="ps-card">
+        <div class="ps-card-title">\\ud83c\\udfc5 Top 10 Cashes</div>
+        <table class="ps-table">
+          <thead><tr><th>Date</th><th>Tournament</th><th>Format</th><th>Buy-in</th><th>Cashed</th><th>Place</th><th>Hands</th></tr></thead>
+          <tbody>
+            \${tTop.map(t => '<tr><td class="ps-pos">'+t.date.split(' ')[0]+'</td><td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+t.name+'">'+t.name+'</td><td>'+t.format+'</td><td>\\u20ac'+t.buyin_eur+'</td><td class="ps-positive">+\\u20ac'+t.cashed_eur+'</td><td>#'+t.place+'</td><td>'+t.hands+'</td></tr>').join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Tournament Hand Stats (same depth as cash) -->
+      <div class="ps-card">
+        <div class="ps-card-title">\\ud83d\\udcca Tournament Hand-Level Stats (\${tSum.total_hands.toLocaleString()} hands)</div>
+        <div class="da-stats-grid">
+          \${gtoStat('VPIP', tPre.overall.vpip, [18,26], '%')}
+          \${gtoStat('PFR', tPre.overall.pfr, [16,22], '%')}
+          \${gtoStat('Limp', tPre.overall.limp_pct, [0,5], '%')}
+          \${gtoStat('C-Bet Flop', tPost.computed_percentages.flop.cbet_pct||0, [55,70], '%')}
+          \${gtoStat('Fold to C-Bet', tPost.computed_percentages.flop.fold_to_cbet_pct||0, [40,55], '%')}
+          \${gtoStat('WTSD', tPost.computed_percentages.flop.wtsd_pct||0, [22,30], '%')}
+          \${gtoStat('W$SD', tPost.computed_percentages.flop.wsd_pct||0, [50,58], '%')}
+          \${gtoStat('Check-Raise', tPost.computed_percentages.flop.xr_pct||0, [8,15], '%')}
+        </div>
+        <div style="font-size:0.78rem;color:var(--text3);margin-top:0.5rem">GTO ranges shown are NLHE MTT/SnG benchmarks (different from PLO cash).</div>
+      </div>
+
+      <!-- Tournament By Position -->
+      <div class="ps-card">
+        <div class="ps-card-title">\\ud83c\\udfaf Tournament Positional Stats</div>
+        <table class="ps-table">
+          <thead><tr><th>Pos</th><th>Hands</th><th>VPIP</th><th>PFR</th><th>Limp</th><th>3-Bet</th><th>RFI</th><th>Cold Call</th><th>Fold to 3B</th></tr></thead>
+          <tbody>
+            \${positions.map(p => { const s = tPre.by_position[p]; if (!s || !s.hands) return ''; return '<tr><td class="ps-pos">'+p+'</td><td>'+s.hands.toLocaleString()+'</td><td>'+s.vpip+'%</td><td>'+s.pfr+'%</td><td>'+s.limp+'%</td><td>'+s.three_bet+'%</td><td>'+s.rfi+'%</td><td>'+s.cold_call+'%</td><td>'+s.fold_to_3bet+'%</td></tr>'; }).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Recent Tournaments -->
+      <div class="ps-card">
+        <div class="ps-card-title">\\u23f1\\ufe0f Recent Tournaments (Last 25)</div>
+        <table class="ps-table">
+          <thead><tr><th>Date</th><th>Tournament</th><th>Format</th><th>Buy-in</th><th>Place</th><th>Cashed</th><th>Net</th><th>Hands</th></tr></thead>
+          <tbody>
+            \${tSessions.slice(0, 25).map(t => '<tr><td class="ps-pos">'+t.date.split(' ')[0]+'</td><td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+t.name+'">'+t.name+'</td><td>'+t.format+'</td><td>\\u20ac'+t.buyin_eur+'</td><td>'+(t.place > 0 ? '#'+t.place : '\\u2014')+'</td><td>'+(t.cashed_eur>0?'<span class="ps-positive">+\\u20ac'+t.cashed_eur+'</span>':'\\u20ac0')+'</td><td class="'+c(t.net_eur)+'">'+f(t.net_eur)+'</td><td>'+t.hands+'</td></tr>').join('')}
+          </tbody>
+        </table>
+      </div>
+    \`;
+
     // ========== TAB SYSTEM ==========
     const tabs = [
       {id:'overview', label:'Overview', icon:'\\ud83d\\udcca'},
+      {id:'tournaments', label:'Tournaments', icon:'\\ud83c\\udfc6'},
       {id:'recent', label:'Recent', icon:'\\ud83d\\udd52'},
       {id:'evgraph', label:'EV Graph', icon:'\\ud83d\\udcc8'},
       {id:'bbsb', label:'BB / SB', icon:'\\ud83c\\udfb2'},
@@ -973,6 +1150,7 @@ function renderPlayerStatsView(container) {
 
     const tabContent = {
       overview: overviewHTML,
+      tournaments: tournamentsHTML,
       recent: recentHTML,
       evgraph: evgraphHTML,
       bbsb: bbsbHTML,
@@ -1056,6 +1234,26 @@ function renderPlayerStatsView(container) {
       const trendsCanvas = document.getElementById('da-trends-pnl');
       if (trendsCanvas && !weeklyCanvas) {
         // Same chart — handled above
+      }
+
+      // Tournament weekly P&L chart
+      const tournCanvas = document.getElementById('da-tourn-pnl');
+      if (tournCanvas && D.tournaments && D.tournaments.weekly_pnl_curve) {
+        const wk = D.tournaments.weekly_pnl_curve;
+        const labels = wk.map(w => w.week);
+        const data = wk.map(w => w.cumulative);
+        activeCharts.push(new Chart(tournCanvas, {
+          type: 'line',
+          data: { labels, datasets: [{ data, borderColor: 'rgba(245,158,11,0.95)', backgroundColor: 'rgba(245,158,11,0.12)', fill: true, tension: 0.3, pointRadius: 3, pointHoverRadius: 6, borderWidth: 2 }] },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => f(ctx.parsed.y) } } },
+            scales: {
+              x: { ticks: { color: '#64748b', maxRotation: 45, font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.03)' } },
+              y: { ticks: { color: '#64748b', callback: v => v >= 0 ? '+'+v : v }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            }
+          }
+        }));
       }
 
       // Hand Quality chart

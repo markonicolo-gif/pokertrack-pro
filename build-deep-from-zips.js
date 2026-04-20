@@ -31,8 +31,9 @@ const parseAmt = (s) => parseFloat((s || '0').replace(/[^0-9.\-]/g, '')) || 0;
 
 function det(els, tag) { const e = els.getElementsByTagName(tag); return e.length ? (e[0].textContent || '').trim() : ''; }
 
-// Aggregators
-const agg = {
+// Aggregators (cash + tournament use same shape so parseHand works for both)
+function makeAcc() {
+  return {
   total_hands: 0,
   total_sessions: 0,
   total_pnl: 0,
@@ -82,7 +83,13 @@ const agg = {
   sessions: [],
   weekly: {},   // monday-week -> { hands, pnl }
   multitabling: { '1_table':{p:0,h:0,s:0}, '2_3_tables':{p:0,h:0,s:0}, '4_plus_tables':{p:0,h:0,s:0} }
-};
+  };
+}
+
+const agg = makeAcc();   // cash games (PLO)
+const tagg = makeAcc();  // tournaments (Holdem NL MTT/SnG)
+// Tournament-specific session-level data (one entry per tournament session)
+const tournamentSessions = []; // { code, name, format, buyin, fee, totalbuyin, win, place, gamecount, rebuys, totalrebuycost, addon, totaladdoncost, tablesize, date, dow, hour, ym, currency, net, invested }
 
 // === Position assignment based on dealer seat ===
 function assignPositions(playersList, dealerSeat) {
@@ -175,19 +182,24 @@ function classifyPLO(cardsStr) {
 }
 
 // === Parse one session XML ===
+const seenSessionCodes = new Set();
 async function parseSession(text) {
   const doc = new DOMParser({ errorHandler: { warning:()=>{}, error:()=>{}, fatalError:()=>{} } }).parseFromString(text, 'text/xml');
   const sessEl = doc.getElementsByTagName('session')[0];
   if (!sessEl) return;
+  const sessionCode = sessEl.getAttribute('sessioncode');
+  if (sessionCode) {
+    if (seenSessionCodes.has(sessionCode)) return; // dedupe — same session in multiple zips
+    seenSessionCodes.add(sessionCode);
+  }
   const gen = doc.getElementsByTagName('general')[0];
   if (!gen) return;
   const nickname = det(gen, 'nickname');
   if (nickname !== HERO) return; // safety
   const gametype = det(gen, 'gametype');
   const startStr = det(gen, 'startdate');
-  const sBets = parseAmt(det(gen, 'bets'));
-  const sWins = parseAmt(det(gen, 'wins'));
-  const tablesize = parseInt(det(gen, 'tablesize')) || 6;
+  const tournamentCode = det(gen, 'tournamentcode');
+  const isTournament = tournamentCode !== '';
 
   const dm = startStr.match(/(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2})/);
   if (!dm) return;
@@ -196,12 +208,78 @@ async function parseSession(text) {
   const ym = `${dm[3]}-${dm[1]}`;
   const dow = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][date.getDay()];
   const hour = date.getHours();
+  const games = doc.getElementsByTagName('game');
+  const tablesize = parseInt(det(gen, 'tablesize')) || 6;
+
+  if (isTournament) {
+    // === TOURNAMENT SESSION ===
+    const tName = det(gen, 'tournamentname') || det(gen, 'tablename') || 'Unknown';
+    const totalBuyinStr = det(gen, 'totalbuyin');
+    const totalBuyin = parseAmt(totalBuyinStr);
+    // rebuy cost (e.g. "€9.10 + €0.90"), totalrebuycost is the unit cost per rebuy
+    const totalRebuyCost = parseAmt(det(gen, 'totalrebuycost'));
+    const totalAddonCost = parseAmt(det(gen, 'totaladdoncost'));
+    const rebuys = parseInt(det(gen, 'rebuys')) || 0;
+    const addon = parseInt(det(gen, 'addon')) || 0;
+    const winAmt = parseAmt(det(gen, 'win'));
+    const place = parseInt(det(gen, 'place')) || 0;
+    const gamecount = parseInt(det(gen, 'gamecount')) || games.length;
+    const currency = det(gen, 'tournamentcurrency') || det(gen, 'currency') || 'EUR';
+    const invested = totalBuyin + (rebuys * totalRebuyCost) + (addon * totalAddonCost);
+    const net = winAmt - invested;
+
+    // Format classification from tournament name + table size
+    let format;
+    if (/twister|spin/i.test(tName)) format = 'Spin/Twister';
+    else if (/double\s*or\s*nothing|\bdon\b/i.test(tName)) format = 'DoN';
+    else if (/\bsat\b|satellite|step\s*sat/i.test(tName)) format = 'Satellite';
+    else if (/sit\s*[&n]\s*go|\bsng\b|s&g/i.test(tName)) format = 'SnG';
+    else if (tablesize <= 10 && !/gtd|guaranteed/i.test(tName)) format = 'SnG';
+    else format = 'MTT';
+
+    tournamentSessions.push({
+      code: tournamentCode, name: tName, format,
+      totalBuyin, rebuys, totalRebuyCost, addon, totalAddonCost,
+      win: winAmt, place, gamecount, tablesize, date: startStr,
+      dow, hour, ym, currency, invested, net,
+      itm: winAmt > 0
+    });
+
+    // Tournament hand stats: bbSize is unknown for tournaments (chip stacks vary)
+    // Use 1 as baseline; bb/100 for tournaments isn't meaningful so we won't use it
+    tagg.total_sessions++;
+    tagg.total_pnl += net;            // tournament net (cashes - cost)
+    tagg.total_hands += games.length;
+    tagg.hand_dates.push(date);
+    tagg.sessions.push({ pnl: Math.round(net*100)/100, hands: games.length, date: startStr, stakes: format, dow, hour, tablesize });
+    tagg.by_month[ym] = tagg.by_month[ym] || { hands:0, pnl:0, sessions:0 };
+    tagg.by_month[ym].hands += games.length; tagg.by_month[ym].pnl += net; tagg.by_month[ym].sessions++;
+    tagg.by_stakes[format] = tagg.by_stakes[format] || { hands:0, pnl:0, sessions:0 };
+    tagg.by_stakes[format].hands += games.length; tagg.by_stakes[format].pnl += net; tagg.by_stakes[format].sessions++;
+    tagg.by_dow[dow].p += net; tagg.by_dow[dow].h += games.length; tagg.by_dow[dow].s++;
+    tagg.by_hour[hour] = tagg.by_hour[hour] || { p:0, h:0, s:0 };
+    tagg.by_hour[hour].p += net; tagg.by_hour[hour].h += games.length; tagg.by_hour[hour].s++;
+    const tWeekStart = new Date(date); const tDay = tWeekStart.getDay(); const tDiff = tDay === 0 ? -6 : 1 - tDay; tWeekStart.setDate(tWeekStart.getDate() + tDiff);
+    const tWkKey = tWeekStart.toISOString().slice(0,10);
+    tagg.weekly[tWkKey] = tagg.weekly[tWkKey] || { hands:0, pnl:0 };
+    tagg.weekly[tWkKey].hands += games.length; tagg.weekly[tWkKey].pnl += net;
+
+    // Hand-level analytics with bbSize=1 (tournament chips, classifyPLO will skip Holdem cards)
+    for (let g = 0; g < games.length; g++) {
+      parseHand(games[g], 1, tagg);
+    }
+    return;
+  }
+
+  // === CASH SESSION === (PLO only — gametype like "Omaha PL €0.50/€1")
+  const sBets = parseAmt(det(gen, 'bets'));
+  const sWins = parseAmt(det(gen, 'wins'));
+
   const stakeMatch = gametype.match(/[€$£]?([\d.]+)\/[€$£]?([\d.]+)/);
   const bbSize = stakeMatch ? parseFloat(stakeMatch[2]) : 1;
   const stakesKey = gametype;
 
   const sessionPnl = sWins - sBets;
-  const games = doc.getElementsByTagName('game');
 
   // Aggregate session-level
   agg.total_sessions++;
@@ -225,11 +303,11 @@ async function parseSession(text) {
 
   // Per-hand parsing
   for (let g = 0; g < games.length; g++) {
-    parseHand(games[g], bbSize);
+    parseHand(games[g], bbSize, agg);
   }
 }
 
-function parseHand(gameEl, bbSize) {
+function parseHand(gameEl, bbSize, agg) {
   // Extract players & dealer
   const playersEls = gameEl.getElementsByTagName('player');
   const playersList = [];
@@ -976,9 +1054,245 @@ async function main() {
     }
   };
 
+  // ====== TOURNAMENT SECTION ======
+  out.tournaments = buildTournamentsSection(pct);
+
+  // ====== COMBINED OVERALL TOTALS (cash + tournaments) ======
+  out.combined = {
+    total_pnl_eur: Math.round((agg.total_pnl + tagg.total_pnl) * 100) / 100,
+    total_hands: agg.total_hands + tagg.total_hands,
+    total_sessions: agg.total_sessions + tagg.total_sessions,
+    cash_pnl_eur: Math.round(agg.total_pnl * 100) / 100,
+    cash_hands: agg.total_hands,
+    cash_sessions: agg.total_sessions,
+    tournament_pnl_eur: Math.round(tagg.total_pnl * 100) / 100,
+    tournament_hands: tagg.total_hands,
+    tournament_sessions: tagg.total_sessions,
+    rake_eur: Math.round(agg.total_rake * 100) / 100
+  };
+
   fs.writeFileSync(path.join(DATA_DIR, 'platinex_dashboard_complete.json'), JSON.stringify(out));
   console.log(`\n✅ Wrote data/platinex_dashboard_complete.json (${(fs.statSync(path.join(DATA_DIR, 'platinex_dashboard_complete.json')).size / 1024).toFixed(0)} KB)`);
+  console.log(`\n=== TOURNAMENT TOTALS ===`);
+  console.log(`Tournaments entered: ${tournamentSessions.length}`);
+  console.log(`Total invested:      €${tournamentSessions.reduce((s,t) => s+t.invested, 0).toFixed(2)}`);
+  console.log(`Total cashed:        €${tournamentSessions.reduce((s,t) => s+t.win, 0).toFixed(2)}`);
+  console.log(`Net winnings:        €${tagg.total_pnl.toFixed(2)}`);
+  console.log(`Tournament hands:    ${tagg.total_hands}`);
+  console.log(`\n=== COMBINED ===`);
+  console.log(`Combined P&L:        €${(agg.total_pnl + tagg.total_pnl).toFixed(2)}`);
+  console.log(`Combined hands:      ${agg.total_hands + tagg.total_hands}`);
   console.log(`Now run: node build-deep-analysis.js   to inject into index.html`);
+}
+
+// ============================================================================
+// TOURNAMENT SUMMARY BUILDER
+// ============================================================================
+function buildTournamentsSection(pct) {
+  const T = tournamentSessions;
+  if (T.length === 0) {
+    return { _empty: true, summary: { entries: 0, invested_eur: 0, cashed_eur: 0, net_eur: 0, roi_pct: 0, itm_pct: 0, total_hands: 0 } };
+  }
+
+  const totalInvested = T.reduce((s,t) => s + t.invested, 0);
+  const totalCashed   = T.reduce((s,t) => s + t.win, 0);
+  const itmCount      = T.filter(t => t.itm).length;
+  const dates         = T.map(t => new Date(t.date.replace(/(\d{2})-(\d{2})-(\d{4}) (.+)/, '$3-$1-$2T$4'))).sort((a,b)=>a-b);
+  const minDate = dates[0], maxDate = dates[dates.length-1];
+
+  // Format breakdown
+  const byFormat = {};
+  for (const t of T) {
+    const f = t.format;
+    if (!byFormat[f]) byFormat[f] = { entries: 0, invested: 0, cashed: 0, itm: 0, hands: 0, places: [] };
+    byFormat[f].entries++;
+    byFormat[f].invested += t.invested;
+    byFormat[f].cashed   += t.win;
+    byFormat[f].hands    += t.gamecount;
+    if (t.itm) byFormat[f].itm++;
+    byFormat[f].places.push(t.place);
+  }
+  const byFormatOut = {};
+  for (const [k,v] of Object.entries(byFormat)) {
+    byFormatOut[k] = {
+      entries: v.entries,
+      invested_eur: Math.round(v.invested*100)/100,
+      cashed_eur:   Math.round(v.cashed*100)/100,
+      net_eur:      Math.round((v.cashed - v.invested)*100)/100,
+      roi_pct:      v.invested > 0 ? Math.round(((v.cashed - v.invested)/v.invested)*1000)/10 : 0,
+      itm_pct:      pct(v.itm, v.entries),
+      hands:        v.hands,
+      avg_buyin_eur: v.entries > 0 ? Math.round((v.invested/v.entries)*100)/100 : 0
+    };
+  }
+
+  // Buy-in level breakdown
+  const buyinBuckets = { 'Micro (≤€5)':[0,5], 'Low (€5-€20)':[5,20], 'Mid (€20-€50)':[20,50], 'High (€50-€200)':[50,200], 'Premium (>€200)':[200,Infinity] };
+  const byBuyin = {};
+  for (const [label, [lo, hi]] of Object.entries(buyinBuckets)) {
+    const sub = T.filter(t => t.totalBuyin > lo && t.totalBuyin <= hi);
+    if (sub.length === 0) continue;
+    const inv = sub.reduce((s,t) => s+t.invested, 0);
+    const csh = sub.reduce((s,t) => s+t.win, 0);
+    const itm = sub.filter(t => t.itm).length;
+    byBuyin[label] = {
+      entries: sub.length,
+      invested_eur: Math.round(inv*100)/100,
+      cashed_eur:   Math.round(csh*100)/100,
+      net_eur:      Math.round((csh-inv)*100)/100,
+      roi_pct:      inv > 0 ? Math.round(((csh-inv)/inv)*1000)/10 : 0,
+      itm_pct:      pct(itm, sub.length),
+      hands:        sub.reduce((s,t)=>s+t.gamecount,0)
+    };
+  }
+
+  // Monthly breakdown
+  const byMonthT = {};
+  for (const t of T) {
+    if (!byMonthT[t.ym]) byMonthT[t.ym] = { entries:0, invested:0, cashed:0, itm:0, hands:0 };
+    byMonthT[t.ym].entries++;
+    byMonthT[t.ym].invested += t.invested;
+    byMonthT[t.ym].cashed   += t.win;
+    byMonthT[t.ym].hands    += t.gamecount;
+    if (t.itm) byMonthT[t.ym].itm++;
+  }
+  const byMonthOut = {};
+  for (const [k,v] of Object.entries(byMonthT)) {
+    byMonthOut[k] = {
+      entries: v.entries,
+      invested_eur: Math.round(v.invested*100)/100,
+      cashed_eur:   Math.round(v.cashed*100)/100,
+      net_eur:      Math.round((v.cashed-v.invested)*100)/100,
+      roi_pct:      v.invested > 0 ? Math.round(((v.cashed-v.invested)/v.invested)*1000)/10 : 0,
+      itm_pct:      pct(v.itm, v.entries),
+      hands:        v.hands
+    };
+  }
+
+  // Finish position distribution
+  const finishBuckets = { '1st':[1,1], '2nd':[2,2], '3rd':[3,3], 'Top 5':[1,5], 'Top 10':[1,10], '11th-25th':[11,25], '26th-100th':[26,100], '100th+':[101,Infinity] };
+  const finishDist = {};
+  for (const [label, [lo, hi]] of Object.entries(finishBuckets)) {
+    const sub = T.filter(t => t.place >= lo && t.place <= hi);
+    finishDist[label] = { count: sub.length, pct: pct(sub.length, T.length), avg_cash: sub.length > 0 ? Math.round((sub.reduce((s,t)=>s+t.win,0)/sub.length)*100)/100 : 0 };
+  }
+
+  // Top 10 cashes
+  const topCashes = [...T].sort((a,b) => b.win - a.win).slice(0, 10).map(t => ({
+    date: t.date, name: t.name, format: t.format, buyin_eur: Math.round(t.totalBuyin*100)/100, cashed_eur: Math.round(t.win*100)/100, place: t.place, hands: t.gamecount
+  }));
+  // Worst (biggest losses by absolute net)
+  const worst = [...T].filter(t=>!t.itm).sort((a,b) => b.invested - a.invested).slice(0, 10).map(t => ({
+    date: t.date, name: t.name, format: t.format, buyin_eur: Math.round(t.totalBuyin*100)/100, invested_eur: Math.round(t.invested*100)/100, place: t.place, hands: t.gamecount
+  }));
+
+  // Hand-level analytics from tagg (same shape as cash)
+  let totalHt = 0, totalVPIPt = 0, totalPFRt = 0, totalLimpt = 0;
+  for (const pos of Object.keys(tagg.pre)) {
+    totalHt += tagg.pre[pos].hands;
+    totalVPIPt += tagg.pre[pos].vpip;
+    totalPFRt += tagg.pre[pos].pfr;
+    totalLimpt += tagg.pre[pos].limp;
+  }
+  const preByPosT = {};
+  for (const [pos, a] of Object.entries(tagg.pre)) {
+    preByPosT[pos] = {
+      hands: a.hands,
+      vpip: pct(a.vpip, a.hands),
+      pfr: pct(a.pfr, a.hands),
+      rfi: pct(a.rfi, a.rfi_opp),
+      limp: pct(a.limp, a.hands),
+      three_bet: pct(a.three_bet, a.three_bet_opp),
+      cold_call: pct(a.cold_call, a.cold_call_opp),
+      fold_vs_raise: pct(a.fold_vs_raise, a.fold_vs_raise_opp),
+      fold_to_3bet: pct(a.fold_to_3bet, a.fold_to_3bet_opp),
+      iso_raise: pct(a.iso_raise, a.iso_opp),
+      squeeze: pct(a.squeeze, a.squeeze_opp)
+    };
+  }
+  const flT = tagg.post.flop, tuT = tagg.post.turn, riT = tagg.post.river;
+  const postCompT = {
+    flop: {
+      cbet_pct: pct(flT.cbet, flT.cbet_opp),
+      cbet_ip_pct: pct(flT.cbet_ip, flT.cbet_opp_ip),
+      cbet_oop_pct: pct(flT.cbet_oop, flT.cbet_opp_oop),
+      xr_pct: pct(flT.xr, flT.xr_opp),
+      donk_pct: pct(flT.donk, flT.donk_opp),
+      fold_to_cbet_pct: pct(flT.fold_to_cbet, flT.fold_to_cbet_opp),
+      wtsd_pct: pct(flT.wtsd, flT.saw),
+      wsd_pct: pct(flT.wsd, flT.wtsd)
+    },
+    turn: {
+      cbet_pct: pct(tuT.cbet, tuT.cbet_opp),
+      xr_pct: pct(tuT.xr, tuT.xr_opp),
+      fold_to_bet_pct: pct(tuT.fold_to_bet, tuT.faced_bet),
+      call_bet_pct: pct(tuT.call_bet, tuT.faced_bet),
+      raise_bet_pct: pct(tuT.raise_bet, tuT.faced_bet)
+    },
+    river: {
+      fold_to_bet_pct: pct(riT.fold_to_bet, riT.faced_bet),
+      call_bet_pct: pct(riT.call_bet, riT.faced_bet),
+      raise_bet_pct: pct(riT.raise_bet, riT.faced_bet)
+    }
+  };
+
+  // Best/worst tournament
+  const biggestCash = T.reduce((m,t) => t.win > m.win ? t : m, T[0]);
+  const bestFinish  = T.reduce((m,t) => (t.place > 0 && (m.place === 0 || t.place < m.place)) ? t : m, T[0]);
+
+  // Sorted sessions list (most recent first)
+  const sessionsList = [...T].sort((a,b) => new Date(b.date.replace(/(\d{2})-(\d{2})-(\d{4}) (.+)/, '$3-$1-$2T$4')) - new Date(a.date.replace(/(\d{2})-(\d{2})-(\d{4}) (.+)/, '$3-$1-$2T$4'))).map(t => ({
+    date: t.date, name: t.name, format: t.format,
+    buyin_eur: Math.round(t.totalBuyin*100)/100,
+    invested_eur: Math.round(t.invested*100)/100,
+    cashed_eur: Math.round(t.win*100)/100,
+    net_eur: Math.round(t.net*100)/100,
+    place: t.place, hands: t.gamecount, tablesize: t.tablesize, itm: t.itm
+  }));
+
+  // Weekly P&L curve (tournaments)
+  const weeklySortedT = Object.entries(tagg.weekly).sort();
+  let cumT = 0;
+  const weeklyCurveT = weeklySortedT.map(([wk, v]) => { cumT += v.pnl; return { week: wk, hands: v.hands, pnl: Math.round(v.pnl*100)/100, cumulative: Math.round(cumT*100)/100 }; });
+
+  return {
+    _metadata: {
+      period: `${minDate.toISOString().slice(0,10)} – ${maxDate.toISOString().slice(0,10)}`,
+      game: 'Holdem NL Tournaments (MTT/SnG/Sat/Spin)'
+    },
+    summary: {
+      entries: T.length,
+      invested_eur: Math.round(totalInvested*100)/100,
+      cashed_eur:   Math.round(totalCashed*100)/100,
+      net_eur:      Math.round((totalCashed - totalInvested)*100)/100,
+      roi_pct:      totalInvested > 0 ? Math.round(((totalCashed - totalInvested)/totalInvested)*1000)/10 : 0,
+      itm_pct:      pct(itmCount, T.length),
+      itm_count:    itmCount,
+      total_hands:  tagg.total_hands,
+      avg_buyin_eur: Math.round((totalInvested/T.length)*100)/100,
+      avg_hands_per_tourn: Math.round((tagg.total_hands/T.length)*10)/10,
+      biggest_cash_eur: Math.round(biggestCash.win*100)/100,
+      biggest_cash_event: biggestCash.name,
+      best_finish: bestFinish.place,
+      best_finish_event: bestFinish.name
+    },
+    by_format: byFormatOut,
+    by_buyin: byBuyin,
+    by_month: byMonthOut,
+    finish_distribution: finishDist,
+    top_cashes: topCashes,
+    worst_busts: worst,
+    preflop: {
+      overall: { vpip: pct(totalVPIPt, totalHt), pfr: pct(totalPFRt, totalHt), limp_pct: pct(totalLimpt, totalHt) },
+      by_position: preByPosT
+    },
+    postflop: {
+      computed_percentages: postCompT,
+      flop_raw: flT, turn_raw: tuT, river_raw: riT
+    },
+    weekly_pnl_curve: weeklyCurveT,
+    sessions: sessionsList
+  };
 }
 
 main().catch(e => { console.error(e); process.exit(1); });
