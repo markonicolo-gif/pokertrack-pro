@@ -158,7 +158,122 @@ function renderPlayerStatsView(container) {
 
   let currentTab = 'overview';
 
+  // ===== Merge browser-imported tournaments into D.tournaments =====
+  // Browser drop zone saves to localStorage.browserTournamentImports.
+  // We merge them into D.tournaments (deduping by code) BEFORE every render
+  // so the tab shows combined stats from .bat-parsed + browser-imported entries.
+  const _D_TOURN_BASE = JSON.parse(JSON.stringify(D.tournaments || { _empty: true, summary: {}, sessions: [] }));
+  function mergeBrowserTournamentImports() {
+    let stored;
+    try { stored = JSON.parse(localStorage.getItem('browserTournamentImports') || '[]'); } catch(e) { stored = []; }
+    if (!stored.length) { D.tournaments = JSON.parse(JSON.stringify(_D_TOURN_BASE)); return 0; }
+
+    // Start fresh from the .bat-parsed base each render
+    const base = JSON.parse(JSON.stringify(_D_TOURN_BASE));
+    const baseSessions = (base.sessions || []);
+    const baseCodes = new Set(baseSessions.map(s => s.code).filter(Boolean));
+    const newOnes = stored.filter(s => s.code && !baseCodes.has(s.code));
+    if (!newOnes.length) { D.tournaments = base; return 0; }
+
+    // Convert browser-format → dashboard-format session objects
+    const brSessions = newOnes.map(t => ({
+      code: t.code, paidWith: t.paidWith,
+      date: t.date, name: t.name, format: t.format,
+      buyin_eur: Math.round((t.totalBuyin||0)*100)/100,
+      invested_eur: Math.round((t.invested||0)*100)/100,
+      cashed_eur: Math.round((t.win||0)*100)/100,
+      net_eur: Math.round(((t.win||0) - (t.invested||0))*100)/100,
+      place: t.place||0, hands: 0, tablesize: 0, itm: !!t.itm
+    }));
+
+    // Combined sessions list (newest first)
+    const allSessions = baseSessions.concat(brSessions).sort((a,b) => {
+      const pa = (a.date||'').match(/(\\d{2})-(\\d{2})-(\\d{4})/);
+      const pb = (b.date||'').match(/(\\d{2})-(\\d{2})-(\\d{4})/);
+      if (!pa) return 1; if (!pb) return -1;
+      return (pb[3]+pb[1]+pb[2]).localeCompare(pa[3]+pa[1]+pa[2]);
+    });
+
+    // Recompute summary using ALL combined entries
+    const allEntries = allSessions; // both have same shape
+    const cashE = allEntries.filter(t => t.paidWith === 'cash');
+    const tickE = allEntries.filter(t => t.paidWith === 'ticket');
+    const totalInv = allEntries.reduce((s,t) => s + (t.invested_eur||0), 0);
+    const totalWon = allEntries.reduce((s,t) => s + (t.cashed_eur||0), 0);
+    const cashInv = cashE.reduce((s,t) => s + (t.invested_eur||0), 0);
+    const cashWon = cashE.reduce((s,t) => s + (t.cashed_eur||0), 0);
+    const tickInv = tickE.reduce((s,t) => s + (t.invested_eur||0), 0);
+    const tickWon = tickE.reduce((s,t) => s + (t.cashed_eur||0), 0);
+    const itmTotal = allEntries.filter(t => t.itm).length;
+    const realMoneyPnl = (cashWon - cashInv) + tickWon;
+
+    base.sessions = allSessions;
+    base._empty = false;
+    base.summary = {
+      ...(base.summary||{}),
+      entries: allEntries.length,
+      invested_eur: Math.round(totalInv*100)/100,
+      cashed_eur: Math.round(totalWon*100)/100,
+      net_eur: Math.round((totalWon - totalInv)*100)/100,
+      roi_pct: totalInv > 0 ? Math.round(((totalWon - totalInv)/totalInv)*1000)/10 : 0,
+      itm_pct: allEntries.length ? Math.round((itmTotal/allEntries.length)*1000)/10 : 0,
+      itm_count: itmTotal,
+      avg_buyin_eur: allEntries.length ? Math.round((totalInv/allEntries.length)*100)/100 : 0,
+      cash_entries: cashE.length,
+      cash_invested_eur: Math.round(cashInv*100)/100,
+      cash_won_from_cash_entries_eur: Math.round(cashWon*100)/100,
+      cash_entries_net_eur: Math.round((cashWon - cashInv)*100)/100,
+      cash_entries_roi_pct: cashInv > 0 ? Math.round(((cashWon - cashInv)/cashInv)*1000)/10 : 0,
+      cash_entries_itm_pct: cashE.length ? Math.round((cashE.filter(t=>t.itm).length/cashE.length)*1000)/10 : 0,
+      ticket_entries: tickE.length,
+      ticket_value_eur: Math.round(tickInv*100)/100,
+      cash_won_from_tickets_eur: Math.round(tickWon*100)/100,
+      ticket_conversion_pct: tickInv > 0 ? Math.round((tickWon/tickInv)*1000)/10 : 0,
+      ticket_entries_itm_pct: tickE.length ? Math.round((tickE.filter(t=>t.itm).length/tickE.length)*1000)/10 : 0,
+      real_money_pnl_eur: Math.round(realMoneyPnl*100)/100
+    };
+
+    // by_format recompute
+    const fmtAcc = {};
+    for (const t of allEntries) {
+      const f = t.format || 'Other';
+      if (!fmtAcc[f]) fmtAcc[f] = { entries:0, invested:0, cashed:0, itm:0, hands:0, places:[] };
+      fmtAcc[f].entries++;
+      fmtAcc[f].invested += t.invested_eur||0;
+      fmtAcc[f].cashed   += t.cashed_eur||0;
+      fmtAcc[f].hands    += t.hands||0;
+      if (t.itm) fmtAcc[f].itm++;
+      if (t.place) fmtAcc[f].places.push(t.place);
+    }
+    base.by_format = {};
+    for (const [k,v] of Object.entries(fmtAcc)) {
+      base.by_format[k] = {
+        entries: v.entries,
+        invested_eur: Math.round(v.invested*100)/100,
+        cashed_eur: Math.round(v.cashed*100)/100,
+        net_eur: Math.round((v.cashed - v.invested)*100)/100,
+        roi_pct: v.invested > 0 ? Math.round(((v.cashed - v.invested)/v.invested)*1000)/10 : 0,
+        itm_pct: v.entries ? Math.round((v.itm/v.entries)*1000)/10 : 0,
+        hands: v.hands,
+        avg_buyin_eur: v.entries ? Math.round((v.invested/v.entries)*100)/100 : 0,
+        avg_place: v.places.length ? Math.round((v.places.reduce((s,p)=>s+p,0)/v.places.length)*10)/10 : 0
+      };
+    }
+
+    // Update combined totals too
+    if (D.combined) {
+      const newTournPnl = realMoneyPnl;
+      D.combined.tournament_pnl_eur = Math.round(newTournPnl*100)/100;
+      D.combined.tournament_sessions = allEntries.length;
+      D.combined.total_pnl_eur = Math.round(((D.combined.cash_pnl_eur||0) + newTournPnl)*100)/100;
+    }
+
+    D.tournaments = base;
+    return newOnes.length;
+  }
+
   function render() {
+    const _mergedNew = mergeBrowserTournamentImports();
     // === Combined cash + tournament totals (from injected DEEP_ANALYSIS.combined) ===
     const _comb = D.combined || { tournament_pnl_eur: 0, tournament_hands: 0, tournament_sessions: 0, cash_pnl_eur: totalPnl };
     const tournPnl = _comb.tournament_pnl_eur || 0;
@@ -999,10 +1114,15 @@ function renderPlayerStatsView(container) {
     const tournamentsHTML = (\`
       <!-- 📥 In-browser tournament zip importer -->
       <div class="ps-card" id="da-tourn-import-card" style="border-color:var(--gold-dim);background:linear-gradient(135deg, rgba(245,158,11,0.05), rgba(245,158,11,0.01))">
-        <div class="ps-card-title" style="color:var(--gold)">\\ud83d\\udce5 Import Tournament Zips</div>
+        <div class="ps-card-title" style="color:var(--gold);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem">
+          <span>\\ud83d\\udce5 Import Tournament Zips</span>
+          \${_mergedNew >= 0 && (function(){ try { return JSON.parse(localStorage.getItem('browserTournamentImports')||'[]').length; } catch(e){ return 0; } })() > 0 ? \`
+            <span style="font-size:0.78rem;font-weight:400;color:var(--text2)">\\ud83d\\udcbe \${(function(){ try { return JSON.parse(localStorage.getItem('browserTournamentImports')||'[]').length; } catch(e){ return 0; } })()} browser-imported tournaments merged into stats <button id="da-tourn-clear" style="margin-left:0.5rem;padding:2px 8px;background:var(--red-dim);color:var(--red);border:none;border-radius:4px;cursor:pointer;font-size:0.72rem">Clear</button></span>
+          \` : ''}
+        </div>
         <div style="padding:0.5rem;color:var(--text2);font-size:0.85rem;margin-bottom:0.5rem">
-          Drop your Novibet tournament .zip file(s) here for an instant in-browser summary (Token vs Cash split, ITM, ROI, real-money P&L).
-          <br><span style="color:var(--text3);font-size:0.78rem">For full deep analysis (charts, by-format tables, hand stats), also drop the file onto <strong>IMPORT-TOURNAMENTS.bat</strong> in the project folder.</span>
+          Drop your Novibet tournament .zip file(s) here. They'll be parsed in your browser, merged with existing stats (deduped by tournament code), and persist in localStorage.
+          <br><span style="color:var(--text3);font-size:0.78rem">For permanent committed data + by-month/hand-level deep analysis, also drop the file onto <strong>IMPORT-TOURNAMENTS.bat</strong> in the project folder.</span>
         </div>
         <div id="da-tourn-drop" style="padding:1.2rem;border:2px dashed var(--gold-dim);border-radius:8px;text-align:center;cursor:pointer;background:rgba(245,158,11,0.03);transition:all 0.2s">
           <div style="font-size:1.4rem;margin-bottom:0.3rem">\\ud83c\\udfaf</div>
@@ -1294,6 +1414,15 @@ function renderPlayerStatsView(container) {
       const dropInput = document.getElementById('da-tourn-input');
       const dropLabel = document.getElementById('da-tourn-drop-label');
       const dropResult = document.getElementById('da-tourn-import-result');
+      const clearBtn = document.getElementById('da-tourn-clear');
+      if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+          if (confirm('Clear all browser-imported tournaments? (Files imported via IMPORT-TOURNAMENTS.bat are NOT affected.)')) {
+            try { localStorage.removeItem('browserTournamentImports'); } catch(e) {}
+            render();
+          }
+        });
+      }
       if (dropZone && !dropZone._wired && window.JSZip && window.DOMParser) {
         dropZone._wired = true;
 
@@ -1404,6 +1533,17 @@ function renderPlayerStatsView(container) {
             for (const t of merged) dedup[t.code] = t;
             localStorage.setItem('browserTournamentImports', JSON.stringify(Object.values(dedup)));
           } catch(e) {}
+
+          // Re-render the entire view so merged tournaments show in the hero cards,
+          // recent tournaments table, by_format breakdown, AND in the Overview tab strip.
+          // Brief delay so user sees the import summary first.
+          setTimeout(() => {
+            currentTab = 'tournaments';
+            render();
+            // Scroll to import card so user sees the new totals
+            const card = document.getElementById('da-tourn-import-card');
+            if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 1200);
         }
 
         dropZone.addEventListener('click', () => dropInput.click());

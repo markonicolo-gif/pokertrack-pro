@@ -1274,6 +1274,7 @@ function buildTournamentsSection(pct) {
 
   // Sorted sessions list (most recent first)
   const sessionsList = [...T].sort((a,b) => new Date(b.date.replace(/(\d{2})-(\d{2})-(\d{4}) (.+)/, '$3-$1-$2T$4')) - new Date(a.date.replace(/(\d{2})-(\d{2})-(\d{4}) (.+)/, '$3-$1-$2T$4'))).map(t => ({
+    code: t.code, paidWith: t.paidWith,
     date: t.date, name: t.name, format: t.format,
     buyin_eur: Math.round(t.totalBuyin*100)/100,
     invested_eur: Math.round(t.invested*100)/100,
