@@ -971,6 +971,18 @@ tr:last-child td { border-bottom: none; }
 .da-mini-val { font-size:0.78rem; font-weight:700; color:var(--text); }
 @media (max-width: 900px) { .da-stats-grid { grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); } .ps-grid-3 { grid-template-columns:1fr; } }
 
+
+/* ===== DEEP ANALYSIS COMPONENTS ===== */
+.da-stats-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:0.75rem; margin-bottom:1rem; }
+.da-stat-box { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:0.85rem 1rem; text-align:center; }
+.da-stat-label { font-size:0.68rem; color:var(--text3); text-transform:uppercase; letter-spacing:0.5px; font-weight:600; margin-bottom:0.3rem; }
+.da-stat-val { font-size:1.15rem; font-weight:800; color:var(--text); }
+.da-mini-stats { display:flex; flex-direction:column; gap:0.3rem; }
+.da-mini-stats > div { display:flex; justify-content:space-between; padding:0.3rem 0; border-bottom:1px solid rgba(255,255,255,0.03); }
+.da-mini-label { font-size:0.78rem; color:var(--text2); }
+.da-mini-val { font-size:0.78rem; font-weight:700; color:var(--text); }
+@media (max-width: 900px) { .da-stats-grid { grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); } .ps-grid-3 { grid-template-columns:1fr; } }
+
 /* ===== PLAYER STATS VIEW ===== */
 .ps-layout { display:flex; flex-direction:column; gap:1.25rem; }
 .ps-section-title { font-size:0.72rem; font-weight:700; color:var(--text3); text-transform:uppercase; letter-spacing:1.2px; margin-bottom:0.5rem; }
@@ -3672,6 +3684,7 @@ function renderPlayerStatsView(container) {
       const inv = sub.reduce((s,t)=>s+(t.invested_eur||0),0);
       const csh = sub.reduce((s,t)=>s+(t.cashed_eur||0),0);
       const itm = sub.filter(t=>t.itm).length;
+      const hnds = sub.reduce((s,t)=>s+(t.hands||0),0);
       base.by_buyin[b.label] = {
         entries: sub.length,
         invested_eur: Math.round(inv*100)/100,
@@ -3679,6 +3692,7 @@ function renderPlayerStatsView(container) {
         net_eur: Math.round((csh - inv)*100)/100,
         roi_pct: inv > 0 ? Math.round(((csh - inv)/inv)*1000)/10 : 0,
         itm_pct: sub.length ? Math.round((itm/sub.length)*1000)/10 : 0,
+        hands: hnds,
         avg_buyin_eur: sub.length ? Math.round((inv/sub.length)*100)/100 : 0
       };
     }

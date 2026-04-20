@@ -301,6 +301,7 @@ function renderPlayerStatsView(container) {
       const inv = sub.reduce((s,t)=>s+(t.invested_eur||0),0);
       const csh = sub.reduce((s,t)=>s+(t.cashed_eur||0),0);
       const itm = sub.filter(t=>t.itm).length;
+      const hnds = sub.reduce((s,t)=>s+(t.hands||0),0);
       base.by_buyin[b.label] = {
         entries: sub.length,
         invested_eur: Math.round(inv*100)/100,
@@ -308,6 +309,7 @@ function renderPlayerStatsView(container) {
         net_eur: Math.round((csh - inv)*100)/100,
         roi_pct: inv > 0 ? Math.round(((csh - inv)/inv)*1000)/10 : 0,
         itm_pct: sub.length ? Math.round((itm/sub.length)*1000)/10 : 0,
+        hands: hnds,
         avg_buyin_eur: sub.length ? Math.round((inv/sub.length)*100)/100 : 0
       };
     }
