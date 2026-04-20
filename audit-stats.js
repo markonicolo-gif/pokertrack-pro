@@ -275,6 +275,32 @@ function reparseSession(text, zipName, fileName) {
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
   ok('Re-parse done in ' + elapsed + 's — ' + recCash.sessions + ' cash + ' + recTourn.entries + ' tourn entries');
 
+  // Merge any browser-tournaments*.json so audit reflects what the parser actually does
+  const extraJsons = fs.readdirSync(DATA_DIR).filter(f => /^browser-tournaments.*\.json$/i.test(f));
+  if (extraJsons.length > 0) {
+    let mergedCnt = 0;
+    const seenT = new Set(recTourn.sessions.map(t => t.code));
+    for (const jf of extraJsons) {
+      try {
+        const obj = JSON.parse(fs.readFileSync(path.join(DATA_DIR, jf), 'utf8'));
+        const list = Array.isArray(obj) ? obj : (obj.tournaments || []);
+        for (const t of list) {
+          if (!t.code || seenT.has(t.code)) continue;
+          seenT.add(t.code);
+          const invested = +t.invested || +t.totalBuyin || 0;
+          const winAmt = +t.win || 0;
+          const paidWith = t.paidWith === 'ticket' ? 'ticket' : 'cash';
+          recTourn.entries++;
+          if (paidWith === 'cash') { recTourn.cash_entries++; recTourn.cash_invested += invested; recTourn.cash_won += winAmt; }
+          else { recTourn.ticket_entries++; recTourn.ticket_value += invested; recTourn.ticket_won += winAmt; }
+          if (winAmt > 0) recTourn.itm_count++;
+          mergedCnt++;
+        }
+      } catch(e) {}
+    }
+    if (mergedCnt > 0) info('Merged ' + mergedCnt + ' tournament(s) from browser-tournaments*.json');
+  }
+
   // ===================================================================================
   // 3. CHECKS
   // ===================================================================================

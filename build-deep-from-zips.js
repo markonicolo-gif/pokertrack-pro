@@ -733,6 +733,82 @@ async function main() {
     console.log(`  ${parsed} sessions parsed, ${failed} failed`);
   }
 
+  // === Merge any browser-exported tournaments saved as data/browser-tournaments*.json ===
+  // Prevents the localStorage-only data loss when user imports tournaments via the
+  // dashboard drop-zone but never moves the original zips into data/.
+  const extraJsons = fs.readdirSync(DATA_DIR).filter(f => /^browser-tournaments.*\.json$/i.test(f));
+  if (extraJsons.length > 0) {
+    console.log(`\n=== Browser-exported tournament JSON ===`);
+    const seenTournCodes = new Set(tournamentSessions.map(t => t.code));
+    let added = 0, skippedDup = 0;
+    for (const jf of extraJsons) {
+      try {
+        const raw = fs.readFileSync(path.join(DATA_DIR, jf), 'utf8');
+        const obj = JSON.parse(raw);
+        const list = Array.isArray(obj) ? obj : (obj.tournaments || []);
+        console.log(`→ ${jf}: ${list.length} entries`);
+        for (const t of list) {
+          if (!t.code) continue;
+          if (seenTournCodes.has(t.code)) { skippedDup++; continue; }
+          seenTournCodes.add(t.code);
+
+          // Reconstruct fields the parser would have created
+          const totalBuyin = +t.totalBuyin || 0;
+          const invested = +t.invested || totalBuyin || 0;
+          const winAmt = +t.win || 0;
+          const place = +t.place || 0;
+          const paidWith = t.paidWith === 'ticket' ? 'ticket' : 'cash';
+          const cashInvested = paidWith === 'cash' ? invested : 0;
+          const ticketInvested = paidWith === 'ticket' ? invested : 0;
+          const net = winAmt - invested;
+          const cashNet = paidWith === 'cash' ? net : winAmt;
+          const tName = t.name || 'Unknown';
+          const format = t.format || 'MTT';
+          const startStr = t.date || '';
+          const dm = startStr.match(/(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2})/);
+          let date = null, ym = '', dow = 'Monday', hour = 12;
+          if (dm) {
+            date = new Date(`${dm[3]}-${dm[1]}-${dm[2]}T${dm[4]}:${dm[5]}:00`);
+            if (!isNaN(date)) {
+              ym = `${dm[3]}-${dm[1]}`;
+              dow = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][date.getDay()];
+              hour = date.getHours();
+            }
+          }
+          if (!date || isNaN(date)) continue;
+
+          tournamentSessions.push({
+            code: t.code, name: tName, format,
+            totalBuyin, rebuys: 0, totalRebuyCost: 0, addon: 0, totalAddonCost: 0,
+            win: winAmt, place, gamecount: 0, tablesize: 6, date: startStr,
+            dow, hour, ym, currency: 'EUR', invested, net,
+            paidWith, cashInvested, ticketInvested, cashNet,
+            itm: winAmt > 0,
+            _source: 'browser-export'
+          });
+          tagg.total_sessions++;
+          tagg.total_pnl += cashNet;
+          // No hand count in browser exports — leave total_hands untouched
+          tagg.hand_dates.push(date);
+          tagg.sessions.push({ pnl: Math.round(cashNet*100)/100, hands: 0, date: startStr, stakes: format, dow, hour, tablesize: 6 });
+          tagg.by_month[ym] = tagg.by_month[ym] || { hands:0, pnl:0, sessions:0 };
+          tagg.by_month[ym].pnl += cashNet; tagg.by_month[ym].sessions++;
+          tagg.by_stakes[format] = tagg.by_stakes[format] || { hands:0, pnl:0, sessions:0 };
+          tagg.by_stakes[format].pnl += cashNet; tagg.by_stakes[format].sessions++;
+          tagg.by_dow[dow].p += cashNet; tagg.by_dow[dow].s++;
+          tagg.by_hour[hour] = tagg.by_hour[hour] || { p:0, h:0, s:0 };
+          tagg.by_hour[hour].p += cashNet; tagg.by_hour[hour].s++;
+          const tWeekStart = new Date(date); const tDay = tWeekStart.getDay(); const tDiff = tDay === 0 ? -6 : 1 - tDay; tWeekStart.setDate(tWeekStart.getDate() + tDiff);
+          const tWkKey = tWeekStart.toISOString().slice(0,10);
+          tagg.weekly[tWkKey] = tagg.weekly[tWkKey] || { hands:0, pnl:0 };
+          tagg.weekly[tWkKey].pnl += cashNet;
+          added++;
+        }
+      } catch (e) { console.log(`  ! failed to load ${jf}: ${e.message}`); }
+    }
+    console.log(`Browser-export merge: +${added} new tournaments, ${skippedDup} skipped (already in zips)`);
+  }
+
   console.log(`\n=== TOTALS ===`);
   console.log(`Sessions: ${agg.total_sessions}`);
   console.log(`Hands:    ${agg.total_hands}`);

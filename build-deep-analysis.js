@@ -1223,7 +1223,7 @@ function renderPlayerStatsView(container) {
         <div class="ps-card-title" style="color:var(--gold);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem">
           <span>\\ud83d\\udce5 Import Tournament Zips</span>
           \${_mergedNew >= 0 && (function(){ try { return JSON.parse(localStorage.getItem('browserTournamentImports')||'[]').length; } catch(e){ return 0; } })() > 0 ? \`
-            <span style="font-size:0.78rem;font-weight:400;color:var(--text2)">\\ud83d\\udcbe \${(function(){ try { return JSON.parse(localStorage.getItem('browserTournamentImports')||'[]').length; } catch(e){ return 0; } })()} browser-imported tournaments merged into stats <button id="da-tourn-clear" style="margin-left:0.5rem;padding:2px 8px;background:var(--red-dim);color:var(--red);border:none;border-radius:4px;cursor:pointer;font-size:0.72rem">Clear</button></span>
+            <span style="font-size:0.78rem;font-weight:400;color:var(--text2)">\\ud83d\\udcbe \${(function(){ try { return JSON.parse(localStorage.getItem('browserTournamentImports')||'[]').length; } catch(e){ return 0; } })()} browser-imported tournaments merged into stats <button id="da-tourn-export" style="margin-left:0.5rem;padding:2px 8px;background:rgba(245,158,11,0.15);color:var(--gold);border:none;border-radius:4px;cursor:pointer;font-size:0.72rem" title="Download JSON to make permanent">\\ud83d\\udcbe Export to data/</button> <button id="da-tourn-clear" style="margin-left:0.25rem;padding:2px 8px;background:var(--red-dim);color:var(--red);border:none;border-radius:4px;cursor:pointer;font-size:0.72rem">Clear</button></span>
           \` : ''}
         </div>
         <div style="padding:0.5rem;color:var(--text2);font-size:0.85rem;margin-bottom:0.5rem">
@@ -1527,6 +1527,32 @@ function renderPlayerStatsView(container) {
             try { localStorage.removeItem('browserTournamentImports'); } catch(e) {}
             render();
           }
+        });
+      }
+      const exportBtn = document.getElementById('da-tourn-export');
+      if (exportBtn) {
+        exportBtn.addEventListener('click', () => {
+          let stored = [];
+          try { stored = JSON.parse(localStorage.getItem('browserTournamentImports') || '[]'); } catch(e){}
+          if (!stored.length) { alert('No browser-imported tournaments to export.'); return; }
+          const payload = {
+            _format: 'pokertrack-pro/browser-tournaments-v1',
+            _exportedAt: new Date().toISOString(),
+            _note: 'Move this file into the data/ folder of your project and re-run the parser to make these tournaments permanent.',
+            tournaments: stored
+          };
+          const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'browser-tournaments.json';
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          setTimeout(() => {
+            alert('Saved browser-tournaments.json (' + stored.length + ' tournaments).\\n\\n' +
+                  'Next step: move this file into your project\\'s data/ folder, then run BUILD-DATA.bat (or node build-deep-from-zips.js).\\n\\n' +
+                  'Once they appear in the parsed data, the browser copies will auto-prune on next load.');
+          }, 200);
         });
       }
       if (dropZone && !dropZone._wired && window.JSZip && window.DOMParser) {
