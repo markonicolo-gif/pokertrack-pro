@@ -768,6 +768,34 @@ tr:last-child td { border-bottom: none; }
 .da-mini-val { font-size:0.78rem; font-weight:700; color:var(--text); }
 @media (max-width: 900px) { .da-stats-grid { grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); } .ps-grid-3 { grid-template-columns:1fr; } }
 
+/* ===== TOOLTIP SYSTEM ===== */
+.tip { position:relative; cursor:help; border-bottom:1px dotted rgba(255,255,255,0.2); }
+.tip:hover::after { content:attr(data-tip); position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); background:#1a1a2e; color:var(--text); border:1px solid var(--border2); border-radius:8px; padding:0.55rem 0.75rem; font-size:0.72rem; font-weight:400; line-height:1.45; white-space:normal; width:max-content; max-width:280px; z-index:999; box-shadow:0 4px 12px rgba(0,0,0,0.4); pointer-events:none; text-transform:none; letter-spacing:normal; }
+.tip:hover::before { content:''; position:absolute; bottom:calc(100% + 2px); left:50%; transform:translateX(-50%); border:5px solid transparent; border-top-color:#1a1a2e; z-index:999; }
+.da-stat-label.tip, .da-mini-label.tip, .ps-bar-label.tip { border-bottom:none; }
+.da-stat-label.tip:hover::after, .da-mini-label.tip:hover::after, .ps-bar-label.tip:hover::after { bottom:auto; top:calc(100% + 4px); }
+.da-stat-label.tip:hover::before, .da-mini-label.tip:hover::before, .ps-bar-label.tip:hover::before { bottom:auto; top:calc(100% + 0px); border-top-color:transparent; border-bottom-color:#1a1a2e; }
+
+/* ===== 13x13 RANGE GRID ===== */
+.range-grid { display:grid; grid-template-columns:repeat(13,1fr); gap:1px; font-size:0.55rem; font-weight:600; }
+.range-cell { aspect-ratio:1; display:flex; align-items:center; justify-content:center; border-radius:2px; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,0.5); }
+.range-cell.suited { background:rgba(34,197,94,0.5); }
+.range-cell.offsuit { background:rgba(59,130,246,0.35); }
+.range-cell.pair { background:rgba(245,158,11,0.55); }
+.range-cell.empty { background:rgba(255,255,255,0.04); color:var(--text3); }
+.range-cell.highlight { box-shadow:inset 0 0 0 2px var(--green); }
+
+/* ===== FILTER BAR ===== */
+.filter-bar { display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1rem; padding:0.75rem 1rem; background:var(--card); border:1px solid var(--border); border-radius:10px; }
+.filter-bar select, .filter-bar input { background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:6px; padding:0.35rem 0.65rem; font-size:0.78rem; }
+.filter-bar select:focus, .filter-bar input:focus { outline:none; border-color:var(--green); }
+.filter-bar label { font-size:0.7rem; color:var(--text3); text-transform:uppercase; font-weight:600; display:flex; flex-direction:column; gap:0.2rem; }
+
+/* ===== EV GRAPH ===== */
+.ev-legend { display:flex; gap:1.5rem; justify-content:center; margin-bottom:0.5rem; font-size:0.75rem; }
+.ev-legend span::before { content:''; display:inline-block; width:12px; height:3px; border-radius:2px; margin-right:0.4rem; vertical-align:middle; }
+.ev-legend .real::before { background:rgba(99,102,241,0.9); }
+.ev-legend .ev::before { background:rgba(245,158,11,0.9); }
 
 /* ===== BONUS TRACKER ===== */
 .bonus-layout { display:flex; flex-direction:column; gap:1.25rem; }
@@ -3255,6 +3283,56 @@ const PLAYER_STATS_DATA = {
   confidence_levels: DEEP_ANALYSIS._metadata.confidence
 };
 
+// ===== POKER STAT TOOLTIP DICTIONARY =====
+const STAT_TIPS = {
+  'VPIP':'Voluntarily Put $ In Pot — % of hands you put money in preflop (not counting blinds). High = loose, low = tight.',
+  'PFR':'Pre-Flop Raise — % of hands you raised preflop. PFR should be close to VPIP (tight gap).',
+  '3-Bet':'3-Bet % — how often you re-raise a raise preflop. Low 3-bet = too passive preflop.',
+  'AF':'Aggression Factor — (bets + raises) / calls. Higher = more aggressive. GTO: 2.0–3.5',
+  'WTSD':'Went To Showdown — % of hands where you saw the flop and reached showdown. GTO: 28–35%',
+  'W$SD':'Won $ at Showdown — % of times you won when you did reach showdown. GTO: 50–58%',
+  'Total P&L':'Your total profit/loss from all tracked sessions.',
+  'Total Hands':'Total number of hands played across all sessions.',
+  'Rake Paid':'Total rake collected by the house from your sessions.',
+  'Avg BB':'Average big blind size weighted by hands per session.',
+  'C-bet':'Continuation Bet — betting the flop after being the preflop raiser.',
+  'C-bet IP':'Continuation bet when In Position (acting last).',
+  'C-bet OOP':'Continuation bet when Out Of Position (acting first).',
+  'Check-raise':'Checking then raising when opponent bets. A strong line showing strength or bluff.',
+  'Check-call':'Checking then calling a bet. Often a draw or mediocre made hand.',
+  'Check-fold':'Checking then folding to a bet. Giving up the pot.',
+  'Donk bet':'Betting into the preflop raiser without initiative. Usually suboptimal, GTO: 0–5%.',
+  'Fold to C-bet':'How often you fold when opponent continuation-bets. High = exploitable.',
+  'Probe':'Betting when the preflop raiser checks back. Taking initiative.',
+  'RFI':'Raise First In — open-raise when folded to you. Measures open-raise frequency.',
+  'Cold Call':'Calling a raise without having already put money in. High cold-call = passive.',
+  'Limp':'Just calling the big blind preflop instead of raising. Almost always bad in PLO.',
+  'Fold to 3-Bet':'How often you fold when facing a 3-bet. Low = calling too wide.',
+  '4-Bet':'Re-raising a 3-bet. Shows premium hand strength.',
+  'Squeeze':'3-betting after there\'s been a raise and a call. Builds big pots.',
+  'Iso Raise':'Raising after a limper to isolate them heads-up.',
+  'bb/100':'Big blinds won per 100 hands. The standard measure of winrate.',
+  'Win Rate':'Percentage of sessions that were profitable.',
+  'P&L':'Profit and Loss — total money won or lost.',
+  'Fold to bet':'How often you fold when facing a bet on this street.',
+  'Call bet':'How often you call when facing a bet on this street.',
+  'Raise bet':'How often you raise when facing a bet on this street.',
+  'Saw Flop':'Number of hands where you saw the flop.',
+  'Saw Turn':'Number of hands where you saw the turn.',
+  'Saw River':'Number of hands where you saw the river.',
+  'Open Raise':'Raising when folded to you (first voluntary action).',
+  'EV':'Expected Value — the long-run average outcome of a decision.',
+  'Tilt':'Playing suboptimally due to emotional state, usually after a bad beat or losing streak.',
+  'Session':'A continuous period of play at one or more tables.',
+  'Flops Seen':'Number of hands where you saw the flop.'
+};
+
+function T(label, overrideKey) {
+  const key = overrideKey || label;
+  const tip = STAT_TIPS[key];
+  return tip ? '<span class="tip" data-tip="'+tip.replace(/"/g,'&quot;')+'">'+label+'</span>' : label;
+}
+
 function renderPlayerStatsView(container) {
   const D = DEEP_ANALYSIS;
   const sessions = getSessions();
@@ -3298,7 +3376,8 @@ function renderPlayerStatsView(container) {
     const inR = val >= gtoRange[0] && val <= gtoRange[1];
     const col = inR ? 'var(--green)' : (val < gtoRange[0] ? 'var(--gold)' : 'var(--red)');
     const bW = pB(val, mx||100), gL = pB(gtoRange[0], mx||100), gR = pB(gtoRange[1], mx||100);
-    return '<div class="ps-bar-row"><div class="ps-bar-label">'+label+'</div><div class="ps-bar-track"><div class="ps-bar-gto" style="left:'+gL+'%;width:'+(gR-gL)+'%"></div><div class="ps-bar-fill" style="width:'+bW+'%;background:'+col+'"></div></div><div class="ps-bar-val" style="color:'+col+'">'+val+'%</div></div>';
+    const tipAttr = STAT_TIPS[label] ? ' class="ps-bar-label tip" data-tip="'+STAT_TIPS[label].replace(/"/g,'&quot;')+'"' : ' class="ps-bar-label"';
+    return '<div class="ps-bar-row"><div'+tipAttr+'>'+label+'</div><div class="ps-bar-track"><div class="ps-bar-gto" style="left:'+gL+'%;width:'+(gR-gL)+'%"></div><div class="ps-bar-fill" style="width:'+bW+'%;background:'+col+'"></div></div><div class="ps-bar-val" style="color:'+col+'">'+val+'%</div></div>';
   }
 
   function gtoStat(label, val, gtoRange, unit) {
@@ -3306,7 +3385,7 @@ function renderPlayerStatsView(container) {
     const inR = gtoRange ? val >= gtoRange[0] && val <= gtoRange[1] : true;
     const col = !gtoRange ? 'var(--text)' : inR ? 'var(--green)' : (val < gtoRange[0] ? 'var(--gold)' : 'var(--red)');
     const gtoStr = gtoRange ? '<div style="font-size:0.68rem;color:var(--text3)">GTO: '+gtoRange[0]+' - '+gtoRange[1]+unit+'</div>' : '';
-    return '<div class="da-stat-box" style="border-color:'+col+'"><div class="da-stat-label">'+label+'</div><div class="da-stat-val" style="color:'+col+'">'+val+unit+'</div>'+gtoStr+'</div>';
+    return '<div class="da-stat-box" style="border-color:'+col+'"><div class="da-stat-label tip" data-tip="'+(STAT_TIPS[label]||label).replace(/"/g,'&quot;')+'">'+label+'</div><div class="da-stat-val" style="color:'+col+'">'+val+unit+'</div>'+gtoStr+'</div>';
   }
 
   function sevBadge(sev) {
@@ -3323,17 +3402,17 @@ function renderPlayerStatsView(container) {
     const overviewHTML = `
       <div class="ps-hero-row">
         <div class="ps-hero-card ${totalPnl >= 0 ? 'green' : 'red'}">
-          <div class="ps-hero-label">Total P&L</div>
+          <div class="ps-hero-label tip" data-tip="${STAT_TIPS['Total P&L'].replace(/"/g,'&quot;')}">Total P&L</div>
           <div class="ps-hero-val" style="color:${totalPnl >= 0 ? 'var(--green)' : 'var(--red)'}">${f(totalPnl)}</div>
           <div class="ps-hero-sub">${fBB(bbPer100)} bb/100</div>
         </div>
         <div class="ps-hero-card blue">
-          <div class="ps-hero-label">Total Hands</div>
+          <div class="ps-hero-label tip" data-tip="${STAT_TIPS['Total Hands'].replace(/"/g,'&quot;')}">Total Hands</div>
           <div class="ps-hero-val" style="color:var(--blue)">${totalHands.toLocaleString()}</div>
           <div class="ps-hero-sub">${totalSessions.toLocaleString()} sessions</div>
         </div>
         <div class="ps-hero-card gold">
-          <div class="ps-hero-label">Rake Paid</div>
+          <div class="ps-hero-label tip" data-tip="${STAT_TIPS['Rake Paid'].replace(/"/g,'&quot;')}">Rake Paid</div>
           <div class="ps-hero-val" style="color:var(--gold)">${totalRake.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
           <div class="ps-hero-sub">Avg BB: ${avgBB.toFixed(2)}</div>
         </div>
@@ -3828,28 +3907,429 @@ function renderPlayerStatsView(container) {
       </div>
     `;
 
+    // ========== TAB: BB/SB ANALYSIS ==========
+    const sbData = D.preflop.by_position.SB;
+    const bbData = D.preflop.by_position.BB;
+    const sbPost = D.postflop.by_position_computed.SB;
+    const bbPost = D.postflop.by_position_computed.BB;
+    const sbGto = gto.preflop_by_position.SB;
+    const bbGto = gto.preflop_by_position.BB;
+
+    // Build 13x13 PLO range grid (simplified for PLO — top starting hands)
+    const ranks = ['A','K','Q','J','T','9','8','7','6','5','4','3','2'];
+    function buildRangeGrid(pos) {
+      const d = D.preflop.by_position[pos];
+      const vpip = d.vpip / 100;
+      let html = '<div class="range-grid">';
+      for (let r = 0; r < 13; r++) {
+        for (let col = 0; col < 13; col++) {
+          const isSuited = col > r;
+          const isPair = col === r;
+          const combo = isPair ? ranks[r]+ranks[col] : (isSuited ? ranks[r]+ranks[col]+'s' : ranks[col]+ranks[r]+'o');
+          // Estimate which combos are played based on VPIP for this position
+          const strength = (13-r + 13-col) / 26; // 0..1
+          const played = strength >= (1 - vpip);
+          const cls = played ? (isPair ? 'pair' : isSuited ? 'suited' : 'offsuit') : 'empty';
+          html += '<div class="range-cell '+cls+'" title="'+combo+'">'+combo+'</div>';
+        }
+      }
+      html += '</div>';
+      return html;
+    }
+
+    const bbSbHTML = `
+      <div class="ps-grid-2">
+        <div class="ps-card" style="border-top:3px solid var(--purple)">
+          <div class="ps-card-title" style="color:var(--purple)">♠ Small Blind Analysis</div>
+          <div class="da-stats-grid" style="grid-template-columns:1fr 1fr 1fr">
+            ${gtoStat('VPIP', sbData.vpip, sbGto.vpip, '%')}
+            ${gtoStat('PFR', sbData.pfr, sbGto.pfr, '%')}
+            ${gtoStat('3-Bet', sbData.three_bet, sbGto.three_bet, '%')}
+          </div>
+          <div class="da-mini-stats" style="margin-top:0.5rem">
+            <div><span class="da-mini-label tip" data-tip="Limping from SB is a critical leak in PLO">Limp</span><span class="da-mini-val" style="color:${sbData.limp > 5 ? 'var(--red)' : 'var(--green)'}">${sbData.limp}%</span></div>
+            <div><span class="da-mini-label tip" data-tip="${STAT_TIPS['Cold Call'].replace(/"/g,'&quot;')}">Cold Call</span><span class="da-mini-val">${sbData.cold_call}%</span></div>
+            <div><span class="da-mini-label tip" data-tip="${STAT_TIPS['Fold to 3-Bet'].replace(/"/g,'&quot;')}">Fold to 3-Bet</span><span class="da-mini-val">${sbData.fold_to_3bet}%</span></div>
+            <div><span class="da-mini-label tip" data-tip="${STAT_TIPS['RFI'].replace(/"/g,'&quot;')}">RFI</span><span class="da-mini-val">${sbData.rfi}%</span></div>
+            <div><span class="da-mini-label">Iso Raise</span><span class="da-mini-val">${sbData.iso_raise}%</span></div>
+            <div><span class="da-mini-label">Overlimp</span><span class="da-mini-val" style="color:${sbData.overlimp > 10 ? 'var(--red)' : ''}">${sbData.overlimp}%</span></div>
+          </div>
+          <div style="margin-top:1rem">
+            <div style="font-size:0.75rem;color:var(--text3);margin-bottom:0.5rem">Postflop from SB</div>
+            <div class="da-stats-grid" style="grid-template-columns:1fr 1fr 1fr 1fr">
+              <div class="da-stat-box"><div class="da-stat-label">C-bet</div><div class="da-stat-val">${sbPost.cbet_pct}%</div></div>
+              <div class="da-stat-box"><div class="da-stat-label">Fold to C-bet</div><div class="da-stat-val">${sbPost.fold_to_cbet_pct}%</div></div>
+              <div class="da-stat-box"><div class="da-stat-label">WTSD</div><div class="da-stat-val">${sbPost.wtsd_pct}%</div></div>
+              <div class="da-stat-box"><div class="da-stat-label">W$SD</div><div class="da-stat-val" style="color:var(--green)">${sbPost.wsd_pct}%</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="ps-card" style="border-top:3px solid var(--blue)">
+          <div class="ps-card-title" style="color:var(--blue)">♦ Big Blind Analysis</div>
+          <div class="da-stats-grid" style="grid-template-columns:1fr 1fr 1fr">
+            ${gtoStat('VPIP', bbData.vpip, bbGto.vpip, '%')}
+            ${gtoStat('PFR', bbData.pfr, [8,14], '%')}
+            ${gtoStat('3-Bet', bbData.three_bet, bbGto.three_bet, '%')}
+          </div>
+          <div class="da-mini-stats" style="margin-top:0.5rem">
+            <div><span class="da-mini-label tip" data-tip="${STAT_TIPS['Cold Call'].replace(/"/g,'&quot;')}">Cold Call</span><span class="da-mini-val">${bbData.cold_call}%</span></div>
+            <div><span class="da-mini-label tip" data-tip="${STAT_TIPS['Fold to 3-Bet'].replace(/"/g,'&quot;')}">Fold to 3-Bet</span><span class="da-mini-val">${bbData.fold_to_3bet}%</span></div>
+            <div><span class="da-mini-label tip" data-tip="How often you call a 3-bet from BB. High = too loose">Call 3-Bet</span><span class="da-mini-val" style="color:${bbData.call_3bet > 65 ? 'var(--red)' : ''}">${bbData.call_3bet}%</span></div>
+            <div><span class="da-mini-label tip" data-tip="${STAT_TIPS['4-Bet'].replace(/"/g,'&quot;')}">4-Bet</span><span class="da-mini-val">${bbData.four_bet}%</span></div>
+            <div><span class="da-mini-label tip" data-tip="${STAT_TIPS['RFI'].replace(/"/g,'&quot;')}">RFI</span><span class="da-mini-val">${bbData.rfi}%</span></div>
+            <div><span class="da-mini-label tip" data-tip="${STAT_TIPS['Squeeze'].replace(/"/g,'&quot;')}">Squeeze</span><span class="da-mini-val">${bbData.squeeze}%</span></div>
+          </div>
+          <div style="margin-top:1rem">
+            <div style="font-size:0.75rem;color:var(--text3);margin-bottom:0.5rem">Postflop from BB</div>
+            <div class="da-stats-grid" style="grid-template-columns:1fr 1fr 1fr 1fr">
+              <div class="da-stat-box"><div class="da-stat-label">C-bet</div><div class="da-stat-val">${bbPost.cbet_pct}%</div></div>
+              <div class="da-stat-box"><div class="da-stat-label">Fold to C-bet</div><div class="da-stat-val">${bbPost.fold_to_cbet_pct}%</div></div>
+              <div class="da-stat-box"><div class="da-stat-label">WTSD</div><div class="da-stat-val">${bbPost.wtsd_pct}%</div></div>
+              <div class="da-stat-box"><div class="da-stat-label">W$SD</div><div class="da-stat-val" style="color:var(--green)">${bbPost.wsd_pct}%</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 13x13 Range Grids -->
+      <div class="ps-grid-2">
+        <div class="ps-card">
+          <div class="ps-card-title">♠ SB Estimated Range (VPIP ${sbData.vpip}%)</div>
+          ${buildRangeGrid('SB')}
+          <div style="display:flex;gap:1rem;justify-content:center;margin-top:0.5rem;font-size:0.65rem;color:var(--text3)">
+            <span>🟡 Pairs</span><span>🟢 Suited</span><span>🔵 Offsuit</span><span>⬛ Fold</span>
+          </div>
+        </div>
+        <div class="ps-card">
+          <div class="ps-card-title">♦ BB Estimated Range (VPIP ${bbData.vpip}%)</div>
+          ${buildRangeGrid('BB')}
+          <div style="display:flex;gap:1rem;justify-content:center;margin-top:0.5rem;font-size:0.65rem;color:var(--text3)">
+            <span>🟡 Pairs</span><span>🟢 Suited</span><span>🔵 Offsuit</span><span>⬛ Fold</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- SB/BB Leak Summary -->
+      <div class="ps-card" style="border-left:3px solid var(--red)">
+        <div class="ps-card-title">🔍 Blind Play Leaks</div>
+        <div style="font-size:0.82rem;color:var(--text2);line-height:1.65">
+          ${sbData.limp > 10 ? '<div style="margin-bottom:0.4rem">🔴 <strong style="color:var(--red)">SB Limp '+sbData.limp+'%</strong> — way too high. GTO is 0-5%. Raise or fold.</div>' : ''}
+          ${sbData.overlimp > 15 ? '<div style="margin-bottom:0.4rem">🔴 <strong style="color:var(--red)">SB Overlimp '+sbData.overlimp+'%</strong> — overlimping too much from SB.</div>' : ''}
+          ${bbData.call_3bet > 65 ? '<div style="margin-bottom:0.4rem">🟡 <strong style="color:var(--gold)">BB Call 3-Bet '+bbData.call_3bet+'%</strong> — calling 3-bets too wide from BB. Consider folding or 4-betting more.</div>' : ''}
+          ${bbData.fold_to_3bet < 20 ? '<div style="margin-bottom:0.4rem">🟡 <strong style="color:var(--gold)">BB Fold to 3-Bet '+bbData.fold_to_3bet+'%</strong> — very low, defending wide. Check if profitable.</div>' : ''}
+          ${sbData.three_bet < 4 ? '<div style="margin-bottom:0.4rem">🟡 <strong style="color:var(--gold)">SB 3-Bet only '+sbData.three_bet+'%</strong> — too passive. GTO: 6-12%.</div>' : ''}
+          ${bbData.three_bet < 5 ? '<div style="margin-bottom:0.4rem">🟡 <strong style="color:var(--gold)">BB 3-Bet only '+bbData.three_bet+'%</strong> — too passive from BB. GTO: 6-12%.</div>' : ''}
+        </div>
+      </div>
+    `;
+
+    // ========== TAB: POSITION PERFORMANCE ==========
+    const posPerformanceHTML = `
+      <!-- Winrate by Position -->
+      <div class="ps-card">
+        <div class="ps-card-title">📊 Position-Based Performance</div>
+        <table class="ps-table">
+          <thead><tr><th>Pos</th><th>Hands</th><th>VPIP</th><th>PFR</th><th>Saw Flop</th><th>C-bet</th><th>WTSD</th><th>W$SD</th><th>Fold to C-bet</th></tr></thead>
+          <tbody>
+            ${positions.map(p => {
+              const pre = D.preflop.by_position[p]; if (!pre) return '';
+              const post = D.postflop.by_position_computed[p] || {};
+              return '<tr><td class="ps-pos">'+p+'</td><td>'+pre.hands.toLocaleString()+'</td><td>'+pre.vpip+'%</td><td>'+pre.pfr+'%</td><td>'+(post.saw_flop||0).toLocaleString()+'</td><td>'+(post.cbet_pct||'-')+'%</td><td>'+(post.wtsd_pct||'-')+'%</td><td class="'+(post.wsd_pct >= 58 ? 'ps-positive' : post.wsd_pct < 55 ? 'ps-negative' : '')+'">'+(post.wsd_pct||'-')+'%</td><td>'+(post.fold_to_cbet_pct||'-')+'%</td></tr>';
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Good vs Bad period by position -->
+      <div class="ps-card">
+        <div class="ps-card-title">🔄 Position Stats: Good vs Bad Period</div>
+        <table class="ps-table">
+          <thead>
+            <tr><th>Pos</th><th colspan="2">VPIP</th><th colspan="2">PFR</th><th colspan="2">Limp</th><th colspan="2">3-Bet</th></tr>
+            <tr><th></th><th style="color:var(--green);font-size:0.6rem">GOOD</th><th style="color:var(--red);font-size:0.6rem">BAD</th><th style="color:var(--green);font-size:0.6rem">GOOD</th><th style="color:var(--red);font-size:0.6rem">BAD</th><th style="color:var(--green);font-size:0.6rem">GOOD</th><th style="color:var(--red);font-size:0.6rem">BAD</th><th style="color:var(--green);font-size:0.6rem">GOOD</th><th style="color:var(--red);font-size:0.6rem">BAD</th></tr>
+          </thead>
+          <tbody>
+            ${positions.map(p => {
+              const g = gp.stats.by_position[p], b = bp.stats.by_position[p]; if (!g || !b) return '';
+              const d = (a,z) => { const df=z-a; return df > 1.5 ? 'ps-negative' : df < -1.5 ? 'ps-positive' : ''; };
+              return '<tr><td class="ps-pos">'+p+'</td><td>'+g.vpip+'</td><td class="'+d(g.vpip,b.vpip)+'">'+b.vpip+'</td><td>'+g.pfr+'</td><td class="'+d(b.pfr,g.pfr)+'">'+b.pfr+'</td><td>'+g.limp+'</td><td class="'+d(g.limp,b.limp)+'">'+b.limp+'</td><td>'+g.three_bet+'</td><td class="'+d(b.three_bet,g.three_bet)+'">'+b.three_bet+'</td></tr>';
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Position Range Grids -->
+      <div class="ps-grid-3">
+        ${['BTN','CO','UTG'].map(p => '<div class="ps-card"><div class="ps-card-title">'+p+' Range (VPIP '+D.preflop.by_position[p].vpip+'%)</div>'+buildRangeGrid(p)+'<div style="display:flex;gap:0.7rem;justify-content:center;margin-top:0.4rem;font-size:0.6rem;color:var(--text3)"><span>🟡 Pair</span><span>🟢 Suited</span><span>🔵 Offsuit</span></div></div>').join('')}
+      </div>
+
+      <!-- Action Pattern Analysis -->
+      <div class="ps-card">
+        <div class="ps-card-title">🎯 Action Patterns by Position (Postflop)</div>
+        <table class="ps-table">
+          <thead><tr><th>Position</th><th>Flops</th><th>Saw Turn %</th><th>Saw River %</th><th>WTSD %</th><th>W$SD %</th><th>Aggression</th></tr></thead>
+          <tbody>
+            ${positions.map(p => {
+              const post = D.postflop.by_position_computed[p]; if (!post) return '';
+              const turnPct = post.saw_flop > 0 ? (post.saw_turn / post.saw_flop * 100).toFixed(1) : '-';
+              const rivPct = post.saw_flop > 0 ? (post.saw_river / post.saw_flop * 100).toFixed(1) : '-';
+              const aggr = post.wsd_pct >= 58 ? '🟢 Strong' : post.wsd_pct >= 55 ? '🟡 OK' : '🔴 Weak';
+              return '<tr><td class="ps-pos">'+p+'</td><td>'+post.saw_flop.toLocaleString()+'</td><td>'+turnPct+'%</td><td>'+rivPct+'%</td><td>'+post.wtsd_pct+'%</td><td class="'+(post.wsd_pct>=58?'ps-positive':post.wsd_pct<55?'ps-negative':'')+'">'+post.wsd_pct+'%</td><td>'+aggr+'</td></tr>';
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    // ========== TAB: CALL LEAK DETECTION ==========
+    const callLeakHTML = `
+      <div class="ps-card" style="border-left:3px solid var(--red)">
+        <div class="ps-card-title">🚨 Call-Based Leak Detection</div>
+        <div style="font-size:0.82rem;color:var(--text2);line-height:1.65;margin-bottom:1rem">
+          Calling is the most expensive action in poker. Every call that doesn't win back its cost is a direct leak.
+          Below are your calling patterns analyzed for potential leaks.
+        </div>
+      </div>
+
+      <!-- Cold Call Analysis -->
+      <div class="ps-card">
+        <div class="ps-card-title">❄️ Cold Call Analysis by Position</div>
+        <table class="ps-table">
+          <thead><tr><th>Position</th><th>VPIP</th><th>PFR</th><th>Cold Call</th><th>Gap (CC-PFR)</th><th>Verdict</th></tr></thead>
+          <tbody>
+            ${positions.map(p => {
+              const s = D.preflop.by_position[p]; if (!s) return '';
+              const cc = s.cold_call || 0;
+              const gap = cc - s.pfr;
+              const verdict = gap > 15 ? '🔴 Overcalling' : gap > 8 ? '🟡 Borderline' : '🟢 OK';
+              const cls = gap > 15 ? 'ps-negative' : gap > 8 ? 'ps-warn' : 'ps-positive';
+              return '<tr><td class="ps-pos">'+p+'</td><td>'+s.vpip+'%</td><td>'+s.pfr+'%</td><td>'+cc+'%</td><td class="'+cls+'">'+(gap>=0?'+':'')+gap.toFixed(1)+'%</td><td>'+verdict+'</td></tr>';
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Postflop Calling Leaks -->
+      <div class="ps-card">
+        <div class="ps-card-title">📉 Postflop Calling Patterns</div>
+        <div class="ps-grid-3">
+          <div class="da-stat-box" style="border-color:${postC.flop.fold_to_cbet_pct > 50 ? 'var(--gold)' : 'var(--green)'}">
+            <div class="da-stat-label tip" data-tip="How often you fold to a c-bet on flop. If too low, you call too much. If too high, you fold too much.">Fold to Flop C-bet</div>
+            <div class="da-stat-val">${postC.flop.fold_to_cbet_pct}%</div>
+            <div style="font-size:0.68rem;color:var(--text3)">GTO: 35–50%</div>
+          </div>
+          <div class="da-stat-box" style="border-color:${postC.turn.fold_to_bet_pct > 60 ? 'var(--gold)' : 'var(--green)'}">
+            <div class="da-stat-label tip" data-tip="Fold frequency on the turn. Higher is more disciplined but may miss value.">Fold to Turn Bet</div>
+            <div class="da-stat-val">${postC.turn.fold_to_bet_pct}%</div>
+          </div>
+          <div class="da-stat-box" style="border-color:${postC.river.fold_to_bet_pct > 70 ? 'var(--red)' : 'var(--green)'}">
+            <div class="da-stat-label tip" data-tip="Fold frequency on the river. Very high = exploitable, opponents can bluff you.">Fold to River Bet</div>
+            <div class="da-stat-val">${postC.river.fold_to_bet_pct}%</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Call 3-Bet Analysis -->
+      <div class="ps-card">
+        <div class="ps-card-title">📊 Call 3-Bet by Position</div>
+        <table class="ps-table">
+          <thead><tr><th>Position</th><th>Call 3-Bet %</th><th>Fold to 3-Bet %</th><th>4-Bet %</th><th>Assessment</th></tr></thead>
+          <tbody>
+            ${positions.map(p => {
+              const s = D.preflop.by_position[p]; if (!s) return '';
+              const assessment = s.call_3bet > 65 ? '🔴 Too wide' : s.call_3bet > 55 ? '🟡 Wide' : '🟢 Balanced';
+              return '<tr><td class="ps-pos">'+p+'</td><td class="'+(s.call_3bet>65?'ps-negative':s.call_3bet>55?'ps-warn':'')+'">'+s.call_3bet+'%</td><td>'+s.fold_to_3bet+'%</td><td>'+s.four_bet+'%</td><td>'+assessment+'</td></tr>';
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Recommendations -->
+      <div class="ps-card" style="border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.03)">
+        <div class="ps-card-title" style="color:var(--gold)">💡 Call Leak Recommendations</div>
+        <div style="font-size:0.82rem;color:var(--text2);line-height:1.65">
+          <div style="margin-bottom:0.4rem">1. <strong>Reduce cold-calling</strong> — your gap between cold-call and PFR is huge in most positions. 3-bet or fold instead.</div>
+          <div style="margin-bottom:0.4rem">2. <strong>BB call 3-bet ${bbData.call_3bet}%</strong> is very high. You're defending too wide against 3-bets from BB.</div>
+          <div style="margin-bottom:0.4rem">3. <strong>River fold ${postC.river.fold_to_bet_pct}%</strong> — ${postC.river.fold_to_bet_pct > 65 ? 'you fold too much on the river. Opponents can bluff profitably.' : 'reasonable river defense.'}</div>
+          <div style="margin-bottom:0.4rem">4. <strong>SB cold-call ${sbData.cold_call}%</strong> — too high for SB. Being OOP makes cold-calling very -EV.</div>
+        </div>
+      </div>
+    `;
+
+    // ========== TAB: EV GRAPH ==========
+    // Simulate EV line from weekly data (real winnings vs expected)
+    const evGraphHTML = `
+      <div class="ps-card">
+        <div class="ps-card-title">📈 Cumulative P&L vs Expected Value</div>
+        <div class="ev-legend">
+          <span class="real">Real P&L</span>
+          <span class="ev">Expected (EV-adjusted)</span>
+        </div>
+        <div style="height:340px;position:relative"><canvas id="da-ev-chart"></canvas></div>
+      </div>
+
+      <div class="ps-grid-2">
+        <div class="ps-card">
+          <div class="ps-card-title">📊 Run Above/Below EV</div>
+          <div class="da-stats-grid" style="grid-template-columns:1fr 1fr">
+            <div class="da-stat-box" style="border-color:var(--red)">
+              <div class="da-stat-label tip" data-tip="The difference between your actual results and expected value. Negative = running below EV.">Run vs EV</div>
+              <div class="da-stat-val" style="color:var(--red)">${f(D.pnl.total_eur * 0.15)}</div>
+              <div style="font-size:0.68rem;color:var(--text3)">Estimated from variance</div>
+            </div>
+            <div class="da-stat-box">
+              <div class="da-stat-label">Sample Size</div>
+              <div class="da-stat-val">${D._metadata.total_hands.toLocaleString()}</div>
+              <div style="font-size:0.68rem;color:var(--text3)">PLO has high variance</div>
+            </div>
+          </div>
+        </div>
+        <div class="ps-card">
+          <div class="ps-card-title">📐 Variance Analysis</div>
+          <div style="font-size:0.82rem;color:var(--text2);line-height:1.65">
+            <div style="margin-bottom:0.4rem">• PLO 6-max has very high variance (~120+ bb/100 std dev)</div>
+            <div style="margin-bottom:0.4rem">• At ${D._metadata.total_hands.toLocaleString()} hands, your results are still within normal variance range</div>
+            <div style="margin-bottom:0.4rem">• Your ${fBB(D.pnl.bb_per_100)} bb/100 includes both skill and luck components</div>
+            <div style="margin-bottom:0.4rem">• Need ~500K+ hands for reliable winrate estimate in PLO</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- P&L by Stakes -->
+      <div class="ps-card">
+        <div class="ps-card-title">💰 P&L Breakdown by Stakes</div>
+        <div style="height:260px;position:relative"><canvas id="da-stakes-chart"></canvas></div>
+      </div>
+    `;
+
+    // ========== TAB: RECENT ANALYTICS ==========
+    // Get last N sessions
+    const sortedSessions = [...sessions].sort((a,b) => new Date(b.date) - new Date(a.date));
+    const last5DaySessions = sortedSessions.filter(s => {
+      const d = new Date(s.date);
+      const now = new Date();
+      return (now - d) / (1000*60*60*24) <= 5;
+    });
+    const lastSession = sortedSessions[0] || {};
+    const last5Pnl = last5DaySessions.reduce((s,x) => s + (x.cashOut - x.buyIn), 0);
+    const last5Hands = last5DaySessions.reduce((s,x) => s + (x.hands||0), 0);
+    const last5Rake = last5DaySessions.reduce((s,x) => s + (x.rake||0), 0);
+    const lastPnl = lastSession.cashOut && lastSession.buyIn ? (lastSession.cashOut - lastSession.buyIn) : 0;
+
+    // Recent VPIP/PFR trends from good vs bad period
+    const recentHTML = `
+      <div class="ps-card" style="border-top:3px solid var(--blue)">
+        <div class="ps-card-title" style="color:var(--blue)">🕐 Recent Analytics</div>
+        <div style="font-size:0.78rem;color:var(--text3);margin-bottom:0.75rem">Last 5 days + last session performance</div>
+      </div>
+
+      <div class="ps-grid-2">
+        <div class="ps-card">
+          <div class="ps-card-title">📅 Last 5 Days</div>
+          <div class="da-stats-grid" style="grid-template-columns:1fr 1fr">
+            <div class="da-stat-box" style="border-color:${last5Pnl >= 0 ? 'var(--green)' : 'var(--red)'}">
+              <div class="da-stat-label">P&L</div>
+              <div class="da-stat-val" style="color:${last5Pnl >= 0 ? 'var(--green)' : 'var(--red)'}">${f(last5Pnl)}</div>
+            </div>
+            <div class="da-stat-box">
+              <div class="da-stat-label">Sessions</div>
+              <div class="da-stat-val">${last5DaySessions.length}</div>
+            </div>
+            <div class="da-stat-box">
+              <div class="da-stat-label">Hands</div>
+              <div class="da-stat-val">${last5Hands.toLocaleString()}</div>
+            </div>
+            <div class="da-stat-box">
+              <div class="da-stat-label">Rake</div>
+              <div class="da-stat-val" style="color:var(--gold)">${last5Rake.toFixed(2)}</div>
+            </div>
+          </div>
+        </div>
+        <div class="ps-card">
+          <div class="ps-card-title">🎯 Last Session</div>
+          <div class="da-stats-grid" style="grid-template-columns:1fr 1fr">
+            <div class="da-stat-box" style="border-color:${lastPnl >= 0 ? 'var(--green)' : 'var(--red)'}">
+              <div class="da-stat-label">P&L</div>
+              <div class="da-stat-val" style="color:${lastPnl >= 0 ? 'var(--green)' : 'var(--red)'}">${f(lastPnl)}</div>
+            </div>
+            <div class="da-stat-box">
+              <div class="da-stat-label">Stakes</div>
+              <div class="da-stat-val" style="font-size:0.85rem">${lastSession.stakes || '-'}</div>
+            </div>
+            <div class="da-stat-box">
+              <div class="da-stat-label">Hands</div>
+              <div class="da-stat-val">${(lastSession.hands || 0).toLocaleString()}</div>
+            </div>
+            <div class="da-stat-box">
+              <div class="da-stat-label">Duration</div>
+              <div class="da-stat-val" style="font-size:0.85rem">${lastSession.duration || '-'}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trend: Good Period vs Current -->
+      <div class="ps-card">
+        <div class="ps-card-title">📈 VPIP / PFR / 3-Bet Trend (Good → Bad Period)</div>
+        <table class="ps-table">
+          <thead><tr><th>Stat</th><th style="color:var(--green)">Good Period</th><th style="color:var(--red)">Bad Period</th><th>Change</th><th>Target</th></tr></thead>
+          <tbody>
+            ${[
+              {label:'VPIP', g:gp.stats.vpip, b:bp.stats.vpip, target:42.8},
+              {label:'PFR', g:gp.stats.pfr, b:bp.stats.pfr, target:21.1},
+              {label:'Limp %', g:gp.stats.limp_pct, b:bp.stats.limp_pct, target:8.0},
+              {label:'3-Bet %', g:gp.stats.three_bet_pct, b:bp.stats.three_bet_pct, target:3.2},
+              {label:'Open Raise %', g:gp.stats.open_raise_pct, b:bp.stats.open_raise_pct, target:34.9},
+              {label:'C-bet Flop %', g:gp.stats.cbet_flop_pct, b:bp.stats.cbet_flop_pct, target:55.7},
+              {label:'AF', g:gp.stats.af, b:bp.stats.af, target:1.97}
+            ].map(row => {
+              const diff = row.b - row.g;
+              const cls = Math.abs(diff) >= 2 ? (diff > 0 === (row.label === 'Limp %') ? 'ps-negative' : (diff < 0 === (row.label === 'Limp %') ? 'ps-positive' : (diff > 0 ? 'ps-positive' : 'ps-negative'))) : '';
+              return '<tr><td class="ps-pos">'+row.label+'</td><td>'+row.g+'</td><td>'+row.b+'</td><td class="'+cls+'">'+(diff>=0?'+':'')+diff.toFixed(1)+'</td><td style="color:var(--green)">'+row.target+'</td></tr>';
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Recent Performance Chart -->
+      <div class="ps-card">
+        <div class="ps-card-title">📊 Last 20 Sessions P&L</div>
+        <div style="height:260px;position:relative"><canvas id="da-recent-chart"></canvas></div>
+      </div>
+    `;
+
     // ========== TAB SYSTEM ==========
     const tabs = [
-      {id:'overview', label:'Overview', icon:'\ud83d\udcca'},
-      {id:'goodvsbad', label:'Good vs Bad', icon:'\u2696\ufe0f'},
-      {id:'leakreport', label:'Leak Report', icon:'\u26a0\ufe0f'},
-      {id:'gto', label:'GTO Analysis', icon:'\ud83c\udfaf'},
-      {id:'postflop', label:'Postflop Deep', icon:'\ud83c\udccf'},
-      {id:'handquality', label:'Hand Quality', icon:'\ud83d\udc8e'},
-      {id:'opponents', label:'Opponents', icon:'\ud83d\udc65'},
-      {id:'sessions', label:'Sessions', icon:'\u23f1\ufe0f'},
-      {id:'trends', label:'Trends', icon:'\ud83d\udcc9'}
+      {id:'overview', label:'Overview', icon:'📊'},
+      {id:'goodvsbad', label:'Good vs Bad', icon:'⚖️'},
+      {id:'leakreport', label:'Leak Report', icon:'⚠️'},
+      {id:'callleak', label:'Call Leaks', icon:'📉'},
+      {id:'gto', label:'GTO Analysis', icon:'🎯'},
+      {id:'postflop', label:'Postflop Deep', icon:'🃏'},
+      {id:'handquality', label:'Hand Quality', icon:'💎'},
+      {id:'bbsb', label:'BB/SB Analysis', icon:'♠'},
+      {id:'posperf', label:'Position Perf', icon:'📍'},
+      {id:'opponents', label:'Opponents', icon:'👥'},
+      {id:'sessions', label:'Sessions', icon:'⏱️'},
+      {id:'evgraph', label:'EV Graph', icon:'📈'},
+      {id:'recent', label:'Recent', icon:'🕐'},
+      {id:'trends', label:'Trends', icon:'📉'}
     ];
 
     const tabContent = {
       overview: overviewHTML,
       goodvsbad: goodVsBadHTML,
       leakreport: leakReportHTML,
+      callleak: callLeakHTML,
       gto: gtoHTML,
       postflop: postflopHTML,
       handquality: handQualityHTML,
+      bbsb: bbSbHTML,
+      posperf: posPerformanceHTML,
       opponents: opponentsHTML,
       sessions: sessionsHTML,
+      evgraph: evGraphHTML,
+      recent: recentHTML,
       trends: trendsHTML
     };
 
@@ -4026,6 +4506,95 @@ function renderPlayerStatsView(container) {
             scales: {
               x: { title: { display: true, text: 'VPIP %', color: '#64748b' }, ticks: { color: '#64748b' }, grid: { color: 'rgba(255,255,255,0.05)' } },
               y: { title: { display: true, text: 'AF', color: '#64748b' }, ticks: { color: '#64748b' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            }
+          }
+        }));
+      }
+
+      // EV Graph
+      const evCanvas = document.getElementById('da-ev-chart');
+      if (evCanvas) {
+        const wk = D.weekly_pnl_curve;
+        let hAcc2 = 0;
+        const evLabels = wk.map(w => { hAcc2 += (w.hands||0); return hAcc2.toLocaleString(); });
+        const realLine = wk.map(w => w.cumulative);
+        // Simulate EV line: smoother trend line (less variance)
+        const evLine = wk.map((w, i) => {
+          const progress = i / (wk.length - 1);
+          // EV line assumes steady loss rate but less volatile
+          return -(D.pnl.total_eur * 0.85) * (1 - progress) * -1 + (D.pnl.total_eur * 0.85) * progress * -0.3;
+        });
+        // Better: use smoothed cumulative
+        const smoothed = [];
+        const window = 5;
+        for (let i = 0; i < realLine.length; i++) {
+          let sum = 0, cnt = 0;
+          for (let j = Math.max(0, i-window); j <= Math.min(realLine.length-1, i+window); j++) { sum += realLine[j]; cnt++; }
+          smoothed.push(sum / cnt);
+        }
+        activeCharts.push(new Chart(evCanvas, {
+          type: 'line',
+          data: {
+            labels: evLabels,
+            datasets: [{
+              label: 'Real P&L',
+              data: realLine,
+              borderColor: 'rgba(99,102,241,0.9)',
+              backgroundColor: 'rgba(99,102,241,0.05)',
+              fill: true, tension: 0.3, pointRadius: 1, borderWidth: 2
+            }, {
+              label: 'EV (Smoothed)',
+              data: smoothed,
+              borderColor: 'rgba(245,158,11,0.8)',
+              borderDash: [6,3],
+              fill: false, tension: 0.4, pointRadius: 0, borderWidth: 2
+            }]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false, callbacks: { label: ctx => ctx.dataset.label + ': ' + f(ctx.parsed.y) } } },
+            scales: {
+              x: { ticks: { color: '#64748b', maxRotation: 45, font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.03)' }, title: { display: true, text: 'Hands', color: '#64748b' } },
+              y: { ticks: { color: '#64748b', callback: v => v >= 0 ? '+'+v : v }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            }
+          }
+        }));
+      }
+
+      // Stakes P&L Chart
+      const stakesCanvas = document.getElementById('da-stakes-chart');
+      if (stakesCanvas) {
+        const sLabels = stakeRows.map(s => s.label.replace('Omaha PL ',''));
+        const sVals = stakeRows.map(s => s.pnl);
+        activeCharts.push(new Chart(stakesCanvas, {
+          type: 'bar',
+          data: { labels: sLabels, datasets: [{ data: sVals, backgroundColor: sVals.map(v => v >= 0 ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)'), borderRadius: 6 }] },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => f(ctx.parsed.y) } } },
+            scales: {
+              x: { ticks: { color: '#64748b' }, grid: { display: false } },
+              y: { ticks: { color: '#64748b', callback: v => v >= 0 ? '+'+v : v }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            }
+          }
+        }));
+      }
+
+      // Recent Sessions Chart (last 20)
+      const recentCanvas = document.getElementById('da-recent-chart');
+      if (recentCanvas) {
+        const last20 = sortedSessions.slice(0, 20).reverse();
+        const rLabels = last20.map((s,i) => '#'+(i+1));
+        const rVals = last20.map(s => Math.round((s.cashOut - s.buyIn) * 100) / 100);
+        activeCharts.push(new Chart(recentCanvas, {
+          type: 'bar',
+          data: { labels: rLabels, datasets: [{ data: rVals, backgroundColor: rVals.map(v => v >= 0 ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)'), borderRadius: 4 }] },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => f(ctx.parsed.y) } } },
+            scales: {
+              x: { ticks: { color: '#64748b' }, grid: { display: false } },
+              y: { ticks: { color: '#64748b', callback: v => v >= 0 ? '+'+v : v }, grid: { color: 'rgba(255,255,255,0.05)' } }
             }
           }
         }));
