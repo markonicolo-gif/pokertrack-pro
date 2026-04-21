@@ -163,36 +163,120 @@ function renderCharts(container, sessions) {
 
   const sorted = [...sessions].sort((a, b) => a.date.localeCompare(b.date));
 
-  // 1. Cumulative Profit
-  let cumulative = 0;
-  const cumData = sorted.map(s => {
-    cumulative += s.cashOut - s.buyIn;
-    return { x: s.date, y: cumulative };
+  // 1. Cumulative Profit — proper poker graph (PokerTracker/HM style)
+  //   - x-axis: session number (constant spacing, so slope = real win rate)
+  //   - y-axis: cumulative $ profit
+  //   - peak line (highest point ever reached) shown faintly to visualize drawdowns
+  //   - zero baseline drawn explicitly
+  //   - line colour: green when above peak, red while in drawdown
+  //   - area fill below line down to 0 (or up to 0 if underwater)
+  let cum = 0, peak = 0;
+  const points = sorted.map((s, i) => {
+    cum += s.cashOut - s.buyIn;
+    if (cum > peak) peak = cum;
+    return { idx: i + 1, date: s.date, sessionPnl: s.cashOut - s.buyIn, cum, peak, drawdown: cum - peak };
   });
+  // Prepend a (0, 0) origin point so the line starts at zero
+  const xs = [0, ...points.map(p => p.idx)];
+  const ys = [0, ...points.map(p => p.cum)];
+  const peaks = [0, ...points.map(p => p.peak)];
+  const finalPnl = points.length ? points[points.length - 1].cum : 0;
+  const lineColor = finalPnl >= 0 ? '#10b981' : '#ef4444';
+  const fillColor = finalPnl >= 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)';
 
   charts.push(new Chart(container.querySelector('#chart-cumulative'), {
     type: 'line',
     data: {
-      labels: cumData.map(d => d.x),
-      datasets: [{
-        label: 'Cumulative Profit',
-        data: cumData.map(d => d.y),
-        borderColor: '#10b981',
-        backgroundColor: 'rgba(16, 185, 129, 0.1)',
-        fill: true,
-        tension: 0.3,
-        pointRadius: 3,
-      }]
+      labels: xs,
+      datasets: [
+        {
+          label: 'Cumulative Profit',
+          data: ys,
+          borderColor: lineColor,
+          backgroundColor: fillColor,
+          fill: { target: 'origin', above: fillColor, below: 'rgba(239, 68, 68, 0.12)' },
+          borderWidth: 2,
+          tension: 0.15,
+          pointRadius: 0,
+          pointHoverRadius: 5,
+          pointHoverBackgroundColor: lineColor,
+          pointHoverBorderColor: '#fff',
+          pointHoverBorderWidth: 2,
+          order: 1
+        },
+        {
+          label: 'All-Time Peak',
+          data: peaks,
+          borderColor: 'rgba(148, 163, 184, 0.45)',
+          borderWidth: 1,
+          borderDash: [4, 4],
+          pointRadius: 0,
+          pointHoverRadius: 0,
+          fill: false,
+          stepped: 'before',
+          order: 0
+        }
+      ]
     },
     options: {
       responsive: true,
-      plugins: { legend: { display: false } },
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          align: 'end',
+          labels: { color: '#9ca3af', boxWidth: 12, boxHeight: 2, font: { size: 11 } }
+        },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          titleColor: '#f1f5f9',
+          bodyColor: '#cbd5e1',
+          borderColor: 'rgba(148,163,184,0.2)',
+          borderWidth: 1,
+          padding: 10,
+          callbacks: {
+            title: (items) => {
+              const idx = items[0].dataIndex;
+              if (idx === 0) return 'Start';
+              const p = points[idx - 1];
+              return `Session #${p.idx} — ${p.date}`;
+            },
+            label: (item) => {
+              const idx = item.dataIndex;
+              if (idx === 0) return 'Cumulative: $0';
+              const p = points[idx - 1];
+              const sign = (n) => (n >= 0 ? '+' : '') + '$' + n.toLocaleString();
+              if (item.datasetIndex === 0) {
+                return [
+                  `Session result: ${sign(p.sessionPnl)}`,
+                  `Cumulative:     ${sign(p.cum)}`,
+                  p.drawdown < 0 ? `Drawdown:       ${sign(p.drawdown)}` : `At all-time high`
+                ];
+              }
+              return `Peak: ${sign(p.peak)}`;
+            }
+          }
+        },
+        // Zero baseline annotation via custom plugin (drawn in beforeDatasetsDraw)
+      },
       scales: {
         y: {
-          ticks: { callback: v => '$' + v.toLocaleString() },
-          grid: { color: 'rgba(255,255,255,0.06)' }
+          ticks: {
+            color: '#9ca3af',
+            callback: v => (v >= 0 ? '+' : '') + '$' + v.toLocaleString()
+          },
+          grid: {
+            color: (ctx) => ctx.tick.value === 0 ? 'rgba(148,163,184,0.5)' : 'rgba(255,255,255,0.05)',
+            lineWidth: (ctx) => ctx.tick.value === 0 ? 1.5 : 1
+          }
         },
-        x: { grid: { color: 'rgba(255,255,255,0.06)' } }
+        x: {
+          title: { display: true, text: 'Session #', color: '#6b7280', font: { size: 11 } },
+          ticks: { color: '#9ca3af', maxTicksLimit: 12 },
+          grid: { color: 'rgba(255,255,255,0.04)' }
+        }
       }
     }
   }));

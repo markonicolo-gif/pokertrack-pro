@@ -210,6 +210,9 @@ tr:hover td { background: rgba(255, 255, 255, 0.02); }
 }
 .chart-card h3 { font-size: 0.95rem; margin-bottom: 1rem; color: var(--text-muted); }
 .chart-card.full-width { grid-column: 1 / -1; }
+.chart-card canvas { width: 100% !important; height: 300px !important; }
+.chart-card.full-width canvas { height: 340px !important; }
+#chart-cumulative { height: 380px !important; }
 
 /* Responsive */
 @media (max-width: 768px) {
