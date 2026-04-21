@@ -332,7 +332,8 @@ async function parseSession(text) {
   const sessionPnl = sWins - sBets;
 
   // === Period assignment (good vs bad) based on session date ===
-  const sessionDateStr = date.toISOString().slice(0,10); // YYYY-MM-DD
+  // Use LOCAL date components (not toISOString which converts to UTC and shifts early-morning sessions to previous day)
+  const sessionDateStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
   const period = sessionDateStr < PERIOD_CUTOFF_DATE ? agg.period_split.good : agg.period_split.bad;
 
   // Aggregate session-level
@@ -511,7 +512,7 @@ function parseHand(gameEl, bbSize, agg, extras) {
       if (heroPFR && raiseCount === 1) {
         bumpPos('rfi');
         posAgg.open_sizes.push(heroRaiseSize / bbSize);
-        if (posAggP) posAggP.open_sizes.push(heroRaiseSize / bbSize);
+        for (const p of extraPosAggs) p.open_sizes.push(heroRaiseSize / bbSize);
       }
     }
   }
@@ -814,7 +815,7 @@ async function main() {
         await parseSession(text);
         parsed++;
         if (parsed % 200 === 0) process.stdout.write(`  ${parsed}/${entries.length}\r`);
-      } catch (e) { failed++; }
+      } catch (e) { failed++; if (failed <= 3) console.log(`  ! ${entry.name}: ${e.message}`); }
     }
     console.log(`  ${parsed} sessions parsed, ${failed} failed`);
   }
@@ -901,6 +902,7 @@ async function main() {
   console.log(`P&L:      €${agg.total_pnl.toFixed(2)}`);
   console.log(`Rake:     €${agg.total_rake.toFixed(2)}`);
   console.log(`Dedup:    ${dupHandsSkipped} duplicate hands skipped (by gamecode)`);
+  console.log(`No-pos:   ${agg.hands_no_pos||0} cash hands lacked dealer/seat info (lost from stats)`);
 
   // === BUILD FINAL JSON ===
   const dates = agg.hand_dates.sort((a,b) => a-b);
