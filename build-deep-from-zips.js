@@ -565,6 +565,9 @@ function parseHand(gameEl, bbSize, agg, periodAgg) {
   // IP = hero acted last preflop (BTN typically, CO if no raise from BTN)
   const isIP = heroPos === 'BTN' || (heroPos === 'CO' && raisesBeforeHero === 0);
 
+  // Cross-street flag: did hero c-bet the flop? (needed for turn double-barrel)
+  let heroCbetFlop = false;
+
   // === FLOP ===
   if (sawFlop) {
     bumpFlop('saw'); bumpBP('saw_flop');
@@ -602,6 +605,7 @@ function parseHand(gameEl, bbSize, agg, periodAgg) {
       if (heroBetFlop && !oppBetFirst) {
         bumpFlop('cbet'); bumpBP('cbet');
         if (isIP) bumpFlop('cbet_ip'); else bumpFlop('cbet_oop');
+        heroCbetFlop = true;
       }
     }
     // Fold to c-bet: hero NOT PFR, faced an opponent bet
@@ -678,6 +682,16 @@ function parseHand(gameEl, bbSize, agg, periodAgg) {
       if (heroFoldedTurn) bumpTurn('fold_to_bet');
       if (heroCalledTurn) bumpTurn('call_bet');
       if (heroRaisedTurn) bumpTurn('raise_bet');
+    }
+    // Turn c-bet (double-barrel): hero c-bet flop, reached turn, no opp lead
+    if (heroCbetFlop) {
+      bumpTurn('cbet_opp');
+      if (heroBetTurn && !oppBetFirstTurn) bumpTurn('cbet');
+    }
+    // Turn check-raise (only when hero checked at least once on turn)
+    if (heroCheckedTurn) {
+      bumpTurn('xr_opp');
+      if (heroRaisedTurn) bumpTurn('xr');
     }
   }
 
