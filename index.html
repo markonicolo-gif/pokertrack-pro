@@ -2843,7 +2843,7 @@ function renderAnalyticsView(container) {
           <h3 style="margin:0">&#128200; Cumulative Profit</h3>
           <div style="display:flex;gap:0.6rem;align-items:center;font-size:0.72rem;color:var(--text2)">
             <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer">
-              <input type="checkbox" id="cum-show-ev" checked style="cursor:pointer"> Expected Value (smoothed skill line)
+              <input type="checkbox" id="cum-show-ev" checked style="cursor:pointer"> EV &amp; 95% variance band
             </label>
             <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer">
               <input type="checkbox" id="cum-show-trend" checked style="cursor:pointer"> Linear trend
@@ -2856,7 +2856,8 @@ function renderAnalyticsView(container) {
         <div class="cum-stats-bar" id="cum-stats-bar"></div>
         <canvas id="ch-cum"></canvas>
         <div style="margin-top:0.6rem;font-size:0.7rem;color:var(--text2);line-height:1.5">
-          <strong style="color:#06b6d4">EV (smoothed):</strong> per-session $/hand smoothed with an adaptive centered window, then re-projected by hand counts \u2014 represents your underlying skill curve with single-session variance removed. Gap above EV = running hot; gap below = running cold. Not true all-in EV (which requires hand-by-hand showdown equity).
+          <strong style="color:#06b6d4">Expected Value (cyan line):</strong> constant-rate projection — your lifetime $/hand multiplied by cumulative hands. This is what your bankroll would look like with zero variance, given your observed skill level. Per-hand EV at all-in spots requires showdown equity (not in session data), so this is the standard statistical substitute.
+          <br><strong style="color:rgba(6,182,212,0.7)">95% variance band (cyan shaded area):</strong> &plusmn;1.96&sigma;&radic;H around the EV line, where &sigma; is your per-hand standard deviation estimated from session residuals. If results are roughly normal, your actual P&amp;L line should stay inside this band ~95% of the time. Excursions outside it = genuinely unusual run (cooler streak / heater).
         </div>
       </div>
       <div class="chart-card"><h3>&#128197; Monthly Results</h3><canvas id="ch-monthly"></canvas></div>
@@ -3052,62 +3053,87 @@ function renderAllCharts(container, sessions) {
   const intercept = yMean - slope * xMean;
   const trendLine = cumPts.map((_, i) => Math.round((intercept + slope * i) * 100) / 100);
 
-  // === Expected Value (smoothed skill-line proxy) ===
-  // True AIEV needs per-hand showdown equity (not in session data). As a defensible
-  // substitute we compute each session's $/hand, smooth that with a centered moving
-  // window (adaptive: ~sqrt(N), min 5, max 25), then re-project by hand counts and
-  // accumulate. The result:
-  //   - ends at the same point as the actual line (variance averages out)
-  //   - bends with stake / skill changes (unlike rigid linear regression)
-  //   - diverges from actual where high-variance sessions occurred
+  // === Expected Value (constant-rate projection + 95% variance bands) ===
+  // Methodology — the standard statistical approach when per-hand AIEV is not
+  // available (which it is not in session-level data):
+  //   1. Lifetime per-hand mean rate: μ = totalPnL / totalHands
+  //      (or per-session mean if no hand counts available)
+  //   2. EV(H) = μ × H  — a straight line representing what your bankroll
+  //      would look like with ZERO variance, given your observed skill level
+  //   3. Per-hand standard deviation σ estimated from session residuals
+  //   4. 95% confidence bands at hand count H: ± 1.96 × σ × √H
+  //      (variance scales linearly with hands, SD with √hands — central limit)
+  //
+  // The actual line ENDS at the EV line by construction (μ is defined that
+  // way), but the SHAPE of how it got there reveals running hot/cold,
+  // and the bands quantify whether your swings are within statistical norm.
   const sessionUnits = useWeeklyCum
     ? weekly.map(w => ({ hands: w.hands || 0, pnl: w.profit }))
     : sorted.map(s => ({ hands: s.hands || 0, pnl: s.cashOut - s.buyIn }));
-  // Per-unit rate: prefer $/hand; if hands missing for a unit, use $/session
-  const useHandRate = sessionUnits.some(u => u.hands > 0);
-  const totalHandsForEV = sessionUnits.reduce((s, u) => s + u.hands, 0);
-  const avgHandsPerUnit = totalHandsForEV > 0 ? totalHandsForEV / sessionUnits.length : 0;
-  const rates = sessionUnits.map(u => {
-    if (useHandRate) {
-      const h = u.hands > 0 ? u.hands : avgHandsPerUnit; // back-fill missing
-      return h > 0 ? u.pnl / h : 0;
-    }
-    return u.pnl;
+  const totalHandsEV   = sessionUnits.reduce((s, u) => s + u.hands, 0);
+  const totalPnlEV     = sessionUnits.reduce((s, u) => s + u.pnl, 0);
+  const useHandRateEV  = totalHandsEV > 0 && sessionUnits.every(u => u.hands > 0);
+  const muPerHand      = useHandRateEV ? totalPnlEV / totalHandsEV : 0;
+  const muPerSession   = sessionUnits.length > 0 ? totalPnlEV / sessionUnits.length : 0;
+
+  // Cumulative axis position at each session (hand count if available, else session #)
+  let handAcc2 = 0;
+  const cumX = sessionUnits.map((u, i) => {
+    if (useHandRateEV) { handAcc2 += u.hands; return handAcc2; }
+    return i + 1;
   });
-  // Centered moving average — window adapts to dataset size
-  const win = Math.max(5, Math.min(25, Math.round(Math.sqrt(n))));
-  const half = Math.floor(win / 2);
-  const smoothedRates = rates.map((_, i) => {
-    const lo = Math.max(0, i - half);
-    const hi = Math.min(n - 1, i + half);
-    let sum = 0, cnt = 0;
-    for (let j = lo; j <= hi; j++) { sum += rates[j]; cnt++; }
-    return cnt > 0 ? sum / cnt : 0;
-  });
-  // Re-project to per-unit expected pnl, then accumulate
-  let evCum = 0;
-  const evPts = sessionUnits.map((u, i) => {
-    const projected = useHandRate
-      ? smoothedRates[i] * (u.hands > 0 ? u.hands : avgHandsPerUnit)
-      : smoothedRates[i];
-    evCum += projected;
-    return Math.round(evCum * 100) / 100;
-  });
-  // Force endpoint to match actual (corrects tiny rounding drift from back-fill)
-  const evEndDrift = (cumPts[n - 1] || 0) - (evPts[n - 1] || 0);
-  if (n > 1 && Math.abs(evEndDrift) > 0.01) {
-    for (let i = 0; i < n; i++) {
-      evPts[i] = Math.round((evPts[i] + evEndDrift * (i / (n - 1))) * 100) / 100;
-    }
+
+  // Expected value at each point
+  const evPts = useHandRateEV
+    ? cumX.map(h => Math.round(muPerHand * h * 100) / 100)
+    : cumX.map(s => Math.round(muPerSession * s * 100) / 100);
+
+  // Per-hand (or per-session) variance estimate via session residuals
+  let sigmaUnit = 0;
+  if (useHandRateEV) {
+    // For each session, residual = pnl - μ*hands. Variance estimate per hand =
+    // residual²/hands. Average across sessions weighted by hand count.
+    let sumHW = 0, sumWVar = 0;
+    sessionUnits.forEach(u => {
+      const residual = u.pnl - muPerHand * u.hands;
+      sumWVar += (residual * residual);
+      sumHW   += u.hands;
+    });
+    sigmaUnit = sumHW > 0 ? Math.sqrt(sumWVar / sumHW) : 0;
+  } else {
+    // Per-session SD of pnl
+    const m = muPerSession;
+    const v = sessionUnits.length > 1
+      ? sessionUnits.reduce((s, u) => s + (u.pnl - m) ** 2, 0) / (sessionUnits.length - 1)
+      : 0;
+    sigmaUnit = Math.sqrt(v);
   }
-  // Variance metric: max abs gap between actual and EV (= biggest swing of luck)
-  let evMaxGap = 0, evMaxGapIdx = 0;
+
+  // 95% confidence bands: ±1.96σ√H  (or ±1.96σ√N for per-session)
+  const Z95 = 1.96;
+  const upperPts = cumX.map((h, i) =>
+    Math.round((evPts[i] + Z95 * sigmaUnit * Math.sqrt(h)) * 100) / 100
+  );
+  const lowerPts = cumX.map((h, i) =>
+    Math.round((evPts[i] - Z95 * sigmaUnit * Math.sqrt(h)) * 100) / 100
+  );
+
+  // Current actual deviation from EV, in € and in σ units
+  const actualEnd  = cumPts[n - 1] || 0;
+  const evEnd      = evPts[n - 1] || 0;
+  const sdEnd      = sigmaUnit * Math.sqrt(cumX[n - 1] || 1);
+  const evDeviation = actualEnd - evEnd;          // by construction ≈ 0
+  // Max divergence from EV anywhere along the path (this is what really matters)
+  let maxDevEur = 0, maxDevIdx = 0;
   for (let i = 0; i < n; i++) {
-    const g = cumPts[i] - evPts[i];
-    if (Math.abs(g) > Math.abs(evMaxGap)) { evMaxGap = g; evMaxGapIdx = i; }
+    const dev = cumPts[i] - evPts[i];
+    if (Math.abs(dev) > Math.abs(maxDevEur)) { maxDevEur = dev; maxDevIdx = i; }
   }
-  // Current EV gap (positive = running above expectation)
-  const evCurrentGap = (cumPts[n - 1] || 0) - (evPts[n - 1] || 0);
+  const maxDevSigma = sigmaUnit > 0 ? maxDevEur / (sigmaUnit * Math.sqrt(cumX[maxDevIdx] || 1)) : 0;
+  // Backward-compat aliases (old stat card references)
+  const evMaxGap = maxDevEur;
+  const evMaxGapIdx = maxDevIdx;
+  const evCurrentGap = evDeviation;
 
   // Render the stats bar above the chart
   const finalPnl = cumPts[cumPts.length - 1] || 0;
@@ -3154,7 +3180,7 @@ function renderAllCharts(container, sessions) {
       ` : ''}
       <div class="cum-stat">
         <div class="cum-stat-label">Max Luck Swing</div>
-        <div class="cum-stat-value ${evMaxGap >= 0 ? 'positive' : 'negative'}" title="Largest gap between actual P&L and smoothed EV at any point">${evMaxGap >= 0 ? '+' : '-'}€${Math.abs(evMaxGap).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+        <div class="cum-stat-value ${evMaxGap >= 0 ? 'positive' : 'negative'}" title="Largest gap between actual P&L and EV anywhere on the curve, expressed in standard deviations">${evMaxGap >= 0 ? '+' : '-'}€${Math.abs(evMaxGap).toLocaleString('en', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ${maxDevSigma >= 0 ? '+' : ''}${maxDevSigma.toFixed(2)}\u03c3</div>
         <div class="cum-stat-sub">${evMaxGap >= 0 ? 'ran hot' : 'ran cold'} at point ${evMaxGapIdx + 1}</div>
       </div>
     `;
@@ -3218,21 +3244,41 @@ function renderAllCharts(container, sessions) {
       borderDash: [6, 4],
       pointRadius: 0, pointHoverRadius: 0, tension: 0, fill: false, order: 2
     },
-    // Expected Value (smoothed skill line) — variance-stripped projection
+    // Expected Value (constant skill-rate projection — straight line through origin)
     {
-      label: 'Expected Value (smoothed)',
+      label: 'Expected Value',
       data: evPts,
       borderColor: '#06b6d4',
       backgroundColor: 'transparent',
-      borderWidth: 1.75,
-      borderDash: [2, 3],
-      pointRadius: 0, pointHoverRadius: 4,
+      borderWidth: 2,
+      pointRadius: 0, pointHoverRadius: 5,
       pointHoverBackgroundColor: '#06b6d4',
       pointHoverBorderColor: '#fff',
       pointHoverBorderWidth: 2,
-      tension: 0.35,
+      tension: 0,
       fill: false,
       order: 2
+    },
+    // 95% confidence band — upper bound (anchor for fill)
+    {
+      label: '__ciUpper',
+      data: upperPts,
+      borderColor: 'rgba(6,182,212,0.35)',
+      borderWidth: 1,
+      borderDash: [3, 3],
+      pointRadius: 0, pointHoverRadius: 0,
+      tension: 0, fill: false, order: 6
+    },
+    // 95% confidence band — lower bound (fills up to upper)
+    {
+      label: '95% Variance Band',
+      data: lowerPts,
+      borderColor: 'rgba(6,182,212,0.35)',
+      backgroundColor: 'rgba(6,182,212,0.07)',
+      borderWidth: 1,
+      borderDash: [3, 3],
+      pointRadius: 0, pointHoverRadius: 0,
+      tension: 0, fill: '-1', order: 6
     },
     // Zero baseline (reference)
     {
@@ -3273,7 +3319,7 @@ function renderAllCharts(container, sessions) {
   });
 
   // Hidden datasets in the legend
-  const hiddenInLegend = new Set(['__peakAnchor', 'Drawdown', 'Zero']);
+  const hiddenInLegend = new Set(['__peakAnchor', 'Drawdown', 'Zero', '__ciUpper']);
 
   const cumChart = new Chart(container.querySelector('#ch-cum'), {
     type: 'line',
@@ -3313,11 +3359,19 @@ function renderAllCharts(container, sessions) {
               if (dd < 0) lines.push(`Drawdown from peak: -€${Math.abs(dd).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
               else lines.push('At all-time high \u2713');
               const evGap = (cumPts[idx] || 0) - (evPts[idx] || 0);
+              const sdAt  = sigmaUnit * Math.sqrt(cumX[idx] || 1);
+              const sigmaDev = sdAt > 0 ? evGap / sdAt : 0;
               if (Math.abs(evGap) >= 0.01) {
                 const sign = evGap >= 0 ? '+' : '-';
-                lines.push(`vs EV: ${sign}€${Math.abs(evGap).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${evGap >= 0 ? 'running hot' : 'running cold'})`);
+                const sigStr = sigmaDev >= 0 ? `+${sigmaDev.toFixed(2)}\u03c3` : `${sigmaDev.toFixed(2)}\u03c3`;
+                const verdict = Math.abs(sigmaDev) < 1 ? 'within 1\u03c3 (normal)'
+                              : Math.abs(sigmaDev) < 1.96 ? 'within 2\u03c3 (typical variance)'
+                              : Math.abs(sigmaDev) < 2.58 ? 'beyond 95% CI (unusual)'
+                              : 'beyond 99% CI (rare)';
+                lines.push(`vs EV: ${sign}€${Math.abs(evGap).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${sigStr})`);
+                lines.push(`Variance: ${verdict}`);
               } else {
-                lines.push('On EV pace');
+                lines.push('Exactly on EV');
               }
               if (hasHands) {
                 const handAcc = useWeeklyCum
@@ -3357,7 +3411,9 @@ function renderAllCharts(container, sessions) {
   const toggleTrend = container.querySelector('#cum-show-trend');
   const toggleDd    = container.querySelector('#cum-show-dd');
   if (toggleEv) toggleEv.addEventListener('change', () => {
-    setDsVisible('Expected Value (smoothed)', toggleEv.checked);
+    setDsVisible('Expected Value', toggleEv.checked);
+    setDsVisible('__ciUpper', toggleEv.checked);
+    setDsVisible('95% Variance Band', toggleEv.checked);
     cumChart.update();
   });
   if (toggleTrend) toggleTrend.addEventListener('change', () => {
