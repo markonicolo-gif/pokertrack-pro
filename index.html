@@ -463,6 +463,23 @@ tr:last-child td { border-bottom: none; }
 }
 .chart-card.full { grid-column: 1 / -1; }
 .chart-card h3 { font-size: 0.82rem; color: var(--text2); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 1rem; }
+.chart-card { position: relative; }
+.chart-card canvas { width: 100% !important; height: 280px !important; }
+.chart-card.full canvas { height: 340px !important; }
+#ch-cum { height: 420px !important; }
+.cum-stats-bar {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.6rem; margin-bottom: 1rem; padding: 0.75rem 0.9rem;
+  background: rgba(15, 23, 42, 0.5); border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.cum-stat { display: flex; flex-direction: column; gap: 0.15rem; }
+.cum-stat-label { font-size: 0.65rem; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+.cum-stat-value { font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cum-stat-value.positive { color: #00d4aa; }
+.cum-stat-value.negative { color: #f43f5e; }
+.cum-stat-value.neutral { color: var(--text); }
+.cum-stat-sub { font-size: 0.7rem; color: var(--text2); }
 
 /* ===== FILTERS ===== */
 .filters-bar {
@@ -2821,7 +2838,11 @@ function renderAnalyticsView(container) {
     <div class="stats-grid" id="stats-grid" style="margin-bottom:1.25rem"></div>
 
     <div class="charts-grid">
-      <div class="chart-card full"><h3>&#128200; Cumulative Profit</h3><canvas id="ch-cum"></canvas></div>
+      <div class="chart-card full">
+        <h3>&#128200; Cumulative Profit</h3>
+        <div class="cum-stats-bar" id="cum-stats-bar"></div>
+        <canvas id="ch-cum"></canvas>
+      </div>
       <div class="chart-card"><h3>&#128197; Monthly Results</h3><canvas id="ch-monthly"></canvas></div>
       <div class="chart-card"><h3>&#128203; Session Distribution</h3><canvas id="ch-dist"></canvas></div>
       <div class="chart-card"><h3>&#128205; Profit by Location</h3><canvas id="ch-loc"></canvas></div>
@@ -2949,38 +2970,64 @@ function renderAllCharts(container, sessions) {
     }
   };
 
-  // 1. Cumulative Profit  — weekly-aggregated if > AGG_THRESHOLD sessions
-  const cumBase = useWeekly ? weekly : sorted;
-  // X-axis labels: cumulative hand count (if any sessions have hands), else fall back to date
+  // 1. Cumulative Profit  — proper PokerTracker-style graph
+  // Features:
+  //   - Main P&L line with green/red colour based on final result
+  //   - All-time-high (peak) shown as faint dashed step-line
+  //   - Drawdown periods shaded red between current line and peak
+  //   - Linear-regression trend (orange dashed) to show overall slope
+  //   - Optional showdown / non-showdown lines when hand-data is available
+  //   - Stats bar above the chart: Net / ATH / Max DD / Current DD / $/100 / Sessions
+  //   - Hover crosshair plugin (vertical guide line)
+  //   - Auto weekly-aggregation for big datasets
+  const useWeeklyCum = useWeekly;
+  const cumBase = useWeeklyCum ? weekly : sorted;
   const hasHands = sorted.some(s => (s.hands || 0) > 0);
   let cumLabels;
   if (hasHands) {
     let handAcc = 0;
-    if (useWeekly) {
+    if (useWeeklyCum) {
       cumLabels = weekly.map(w => { handAcc += (w.hands || 0); return handAcc.toLocaleString() + ' hands'; });
     } else {
       cumLabels = sorted.map(s => { handAcc += (s.hands || 0); return handAcc.toLocaleString() + ' hands'; });
     }
   } else {
-    cumLabels = useWeekly ? weekly.map(w => w.week) : sorted.map(s => s.date);
+    cumLabels = useWeeklyCum ? weekly.map(w => w.week) : sorted.map(s => s.date);
   }
-  let cum = 0, cumSD = 0, cumNSD = 0;
-  const cumPts = useWeekly
-    ? weekly.map(w => { cum += w.profit; return Math.round(cum * 100) / 100; })
-    : sorted.map(s => { cum += s.cashOut - s.buyIn; return cum; });
+
+  // Pre-compute cumulative + running peak + drawdown
+  let cum = 0, cumSD = 0, cumNSD = 0, peak = 0, maxDD = 0;
+  let athIdx = 0, lowIdx = 0, lowVal = 0;
+  const cumPts  = [];
+  const peakPts = [];
+  const ddPts   = []; // drawdown amount (negative number) per point
+  const rawSrc  = useWeeklyCum
+    ? weekly.map(w => w.profit)
+    : sorted.map(s => s.cashOut - s.buyIn);
+  rawSrc.forEach((v, i) => {
+    cum += v;
+    if (cum > peak) { peak = cum; athIdx = i; }
+    if (cum < lowVal) { lowVal = cum; lowIdx = i; }
+    const dd = cum - peak; // <= 0
+    if (dd < maxDD) maxDD = dd;
+    cumPts.push(Math.round(cum * 100) / 100);
+    peakPts.push(Math.round(peak * 100) / 100);
+    ddPts.push(Math.round(dd * 100) / 100);
+  });
+
   const hasHandData = sorted.some(s => s.showdownWin !== undefined);
   const cumSDPts = hasHandData
-    ? (useWeekly
+    ? (useWeeklyCum
         ? (() => { const m = new Map(); sorted.forEach(s => { const k = weekKey(s.date); m.set(k, (m.get(k) || 0) + (s.showdownWin ?? 0)); }); return weekly.map(w => { cumSD += (m.get(w.week) || 0); return Math.round(cumSD * 100) / 100; }); })()
         : sorted.map(s => { cumSD += (s.showdownWin ?? 0); return Math.round(cumSD * 100) / 100; }))
     : null;
   const cumNSDPts = hasHandData
-    ? (useWeekly
+    ? (useWeeklyCum
         ? (() => { const m = new Map(); sorted.forEach(s => { const k = weekKey(s.date); m.set(k, (m.get(k) || 0) + (s.nonShowdownWin ?? 0)); }); return weekly.map(w => { cumNSD += (m.get(w.week) || 0); return Math.round(cumNSD * 100) / 100; }); })()
         : sorted.map(s => { cumNSD += (s.nonShowdownWin ?? 0); return Math.round(cumNSD * 100) / 100; }))
     : null;
 
-  // Linear regression trend on the cumulative series
+  // Linear regression on cumPts (overall slope = $/session or $/week trend)
   const n = cumPts.length;
   const xMean = (n - 1) / 2;
   const yMean = cumPts.reduce((a, b) => a + b, 0) / n;
@@ -2989,25 +3036,211 @@ function renderAllCharts(container, sessions) {
   const intercept = yMean - slope * xMean;
   const trendLine = cumPts.map((_, i) => Math.round((intercept + slope * i) * 100) / 100);
 
+  // Render the stats bar above the chart
+  const finalPnl = cumPts[cumPts.length - 1] || 0;
+  const totalHandsAll = sorted.reduce((s, x) => s + (x.hands || 0), 0);
+  const totalSessionsAll = sorted.length;
+  const winRatePer100 = totalHandsAll > 0 ? (finalPnl / totalHandsAll) * 100 : 0;
+  const currentDD = ddPts[ddPts.length - 1] || 0;
+  const fmt = (v) => (v >= 0 ? '+' : '-') + '€' + Math.abs(v).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtNoSign = (v) => '€' + Math.abs(v).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const cumStatsBar = container.querySelector('#cum-stats-bar');
+  if (cumStatsBar) {
+    cumStatsBar.innerHTML = `
+      <div class="cum-stat">
+        <div class="cum-stat-label">Net P&amp;L</div>
+        <div class="cum-stat-value ${finalPnl >= 0 ? 'positive' : 'negative'}">${fmt(finalPnl)}</div>
+        <div class="cum-stat-sub">${totalSessionsAll.toLocaleString()} sessions</div>
+      </div>
+      <div class="cum-stat">
+        <div class="cum-stat-label">All-Time High</div>
+        <div class="cum-stat-value ${peak >= 0 ? 'positive' : 'neutral'}">${fmt(peak)}</div>
+        <div class="cum-stat-sub">at point ${athIdx + 1} of ${n}</div>
+      </div>
+      <div class="cum-stat">
+        <div class="cum-stat-label">Max Drawdown</div>
+        <div class="cum-stat-value negative">${fmtNoSign(maxDD)}</div>
+        <div class="cum-stat-sub">peak-to-trough</div>
+      </div>
+      <div class="cum-stat">
+        <div class="cum-stat-label">Current DD</div>
+        <div class="cum-stat-value ${currentDD < 0 ? 'negative' : 'positive'}">${currentDD < 0 ? fmtNoSign(currentDD) : 'At ATH'}</div>
+        <div class="cum-stat-sub">${currentDD < 0 ? 'below peak' : '\u2713 new high'}</div>
+      </div>
+      ${totalHandsAll > 0 ? `
+      <div class="cum-stat">
+        <div class="cum-stat-label">Win Rate</div>
+        <div class="cum-stat-value ${winRatePer100 >= 0 ? 'positive' : 'negative'}">${(winRatePer100 >= 0 ? '+' : '')}€${winRatePer100.toFixed(2)}</div>
+        <div class="cum-stat-sub">per 100 hands</div>
+      </div>
+      <div class="cum-stat">
+        <div class="cum-stat-label">Total Hands</div>
+        <div class="cum-stat-value neutral">${totalHandsAll.toLocaleString()}</div>
+        <div class="cum-stat-sub">${useWeeklyCum ? 'weekly view' : 'session view'}</div>
+      </div>
+      ` : ''}
+    `;
+  }
+
+  // Crosshair plugin (vertical line at hovered point)
+  const crosshairPlugin = {
+    id: 'cumCrosshair',
+    afterDatasetsDraw(chart) {
+      const active = chart.tooltip?.getActiveElements?.();
+      if (!active || !active.length) return;
+      const x = active[0].element.x;
+      const { top, bottom } = chart.chartArea;
+      const ctx = chart.ctx;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.45)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(x, top);
+      ctx.lineTo(x, bottom);
+      ctx.stroke();
+      ctx.restore();
+    }
+  };
+
+  const mainColor = finalPnl >= 0 ? '#00d4aa' : '#f43f5e';
+  const mainFill  = finalPnl >= 0 ? 'rgba(0,212,170,0.10)' : 'rgba(244,63,94,0.10)';
+
   const cumDatasets = [
-    { label: useWeekly ? 'Net Profit (weekly)' : 'Net Profit', data: cumPts, borderColor: cumPts[cumPts.length-1] >= 0 ? '#00d4aa' : '#f43f5e', backgroundColor: cumPts[cumPts.length-1] >= 0 ? 'rgba(0,212,170,0.06)' : 'rgba(244,63,94,0.06)', fill: true, tension: 0.3, pointRadius: cumBase.length < 30 ? 3 : 0, pointHoverRadius: 5, borderWidth: 2 },
-    { label: 'Linear Trend', data: trendLine, borderColor: 'rgba(245,158,11,0.45)', backgroundColor: 'transparent', fill: false, tension: 0, pointRadius: 0, pointHoverRadius: 0, borderWidth: 1.5, borderDash: [6, 4] },
-    { label: 'Zero', data: cumLabels.map(() => 0), borderColor: 'rgba(255,255,255,0.08)', borderDash: [4,4], borderWidth: 1, pointRadius: 0, tension: 0 },
+    // Drawdown shading: invisible peak line as fill anchor + visible cum line filling UP to peak with red
+    {
+      label: '__peakAnchor', data: peakPts,
+      borderColor: 'transparent', pointRadius: 0, pointHoverRadius: 0,
+      fill: false, tension: 0, order: 5
+    },
+    {
+      label: 'Drawdown',
+      data: cumPts,
+      borderColor: 'transparent',
+      backgroundColor: 'rgba(244,63,94,0.18)',
+      fill: '-1', // fill to previous dataset (peak)
+      pointRadius: 0, pointHoverRadius: 0, tension: 0.25, order: 4
+    },
+    // All-time-high step line
+    {
+      label: 'All-Time High',
+      data: peakPts,
+      borderColor: 'rgba(148, 163, 184, 0.55)',
+      borderWidth: 1,
+      borderDash: [5, 4],
+      pointRadius: 0, pointHoverRadius: 0,
+      stepped: 'before', fill: false, order: 3
+    },
+    // Linear trend
+    {
+      label: 'Linear Trend',
+      data: trendLine,
+      borderColor: 'rgba(245,158,11,0.55)',
+      borderWidth: 1.25,
+      borderDash: [6, 4],
+      pointRadius: 0, pointHoverRadius: 0, tension: 0, fill: false, order: 2
+    },
+    // Zero baseline (reference)
+    {
+      label: 'Zero',
+      data: cumLabels.map(() => 0),
+      borderColor: 'rgba(255,255,255,0.18)',
+      borderDash: [3, 3], borderWidth: 1,
+      pointRadius: 0, pointHoverRadius: 0, tension: 0, fill: false, order: 1
+    },
+    // The main cumulative P&L line (drawn last so it sits on top)
+    {
+      label: useWeeklyCum ? 'Net Profit (weekly)' : 'Net Profit',
+      data: cumPts,
+      borderColor: mainColor,
+      backgroundColor: mainFill,
+      fill: { target: { value: 0 }, above: mainFill, below: 'rgba(244,63,94,0.10)' },
+      tension: 0.25,
+      pointRadius: cumBase.length < 30 ? 3 : 0,
+      pointHoverRadius: 6,
+      pointHoverBackgroundColor: mainColor,
+      pointHoverBorderColor: '#fff',
+      pointHoverBorderWidth: 2,
+      borderWidth: 2.5,
+      order: 0
+    }
   ];
-  if (cumSDPts)  cumDatasets.splice(1, 0, { label: 'Showdown',     data: cumSDPts,  borderColor: '#3b82f6', backgroundColor: 'transparent', fill: false, tension: 0.3, pointRadius: 0, pointHoverRadius: 4, borderWidth: 1.5 });
-  if (cumNSDPts) cumDatasets.splice(2, 0, { label: 'Non-showdown', data: cumNSDPts, borderColor: '#8b5cf6', backgroundColor: 'transparent', fill: false, tension: 0.3, pointRadius: 0, pointHoverRadius: 4, borderWidth: 1.5 });
+  if (cumSDPts) cumDatasets.push({
+    label: 'Showdown', data: cumSDPts,
+    borderColor: '#3b82f6', backgroundColor: 'transparent',
+    fill: false, tension: 0.25, pointRadius: 0, pointHoverRadius: 4,
+    borderWidth: 1.5, order: 0
+  });
+  if (cumNSDPts) cumDatasets.push({
+    label: 'Non-showdown', data: cumNSDPts,
+    borderColor: '#8b5cf6', backgroundColor: 'transparent',
+    fill: false, tension: 0.25, pointRadius: 0, pointHoverRadius: 4,
+    borderWidth: 1.5, order: 0
+  });
+
+  // Hidden datasets in the legend
+  const hiddenInLegend = new Set(['__peakAnchor', 'Drawdown', 'Zero']);
 
   activeCharts.push(new Chart(container.querySelector('#ch-cum'), {
     type: 'line',
     data: { labels: cumLabels, datasets: cumDatasets },
+    plugins: [crosshairPlugin],
     options: {
-      ...chartDefaults,
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { display: true, labels: { color: '#64748b', font: { size: 11 }, boxWidth: 24, padding: 12, filter: item => item.text !== 'Zero' } },
-        tooltip: { ...tooltipDefaults, filter: item => item.dataset.label !== 'Zero', callbacks: {
-          title: ctx => hasHands ? (ctx[0]?.label || '') : ((useWeekly ? 'Week of ' : '') + (ctx[0]?.label || '')),
-          label: ctx => { const v = ctx.parsed.y; return `${ctx.dataset.label}: €${v >= 0 ? '+' : '-'}${Math.abs(v).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
-        }}
+        legend: {
+          display: true, position: 'top', align: 'end',
+          labels: {
+            color: '#94a3b8', font: { size: 11 }, boxWidth: 24, boxHeight: 2, padding: 14,
+            filter: item => !hiddenInLegend.has(item.text)
+          }
+        },
+        tooltip: {
+          ...tooltipDefaults,
+          filter: item => !hiddenInLegend.has(item.dataset.label),
+          callbacks: {
+            title: ctx => {
+              const idx = ctx[0]?.dataIndex ?? 0;
+              const baseLabel = ctx[0]?.label || '';
+              if (useWeeklyCum) return `Week of ${weekly[idx]?.week || baseLabel}`;
+              const s = sorted[idx];
+              return s ? `${s.date}${s.location ? ' \u2022 ' + s.location : ''}` : baseLabel;
+            },
+            label: ctx => {
+              const v = ctx.parsed.y;
+              return `${ctx.dataset.label}: ${v >= 0 ? '+' : '-'}€${Math.abs(v).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            },
+            afterBody: ctx => {
+              const idx = ctx[0]?.dataIndex ?? 0;
+              const lines = [];
+              const dd = ddPts[idx];
+              if (dd < 0) lines.push(`Drawdown from peak: -€${Math.abs(dd).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+              else lines.push('At all-time high \u2713');
+              if (hasHands) {
+                const handAcc = useWeeklyCum
+                  ? weekly.slice(0, idx + 1).reduce((s, w) => s + (w.hands || 0), 0)
+                  : sorted.slice(0, idx + 1).reduce((s, x) => s + (x.hands || 0), 0);
+                lines.push(`Total hands so far: ${handAcc.toLocaleString()}`);
+              }
+              return lines;
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          grid: {
+            color: (c) => c.tick.value === 0 ? 'rgba(148,163,184,0.45)' : 'rgba(255,255,255,0.04)',
+            lineWidth: (c) => c.tick.value === 0 ? 1.5 : 1
+          },
+          ticks: { ...tickOpts, callback: v => '€' + (v >= 0 ? '' : '-') + Math.abs(v).toLocaleString() }
+        },
+        x: {
+          grid: { color: 'rgba(255,255,255,0.03)' },
+          ticks: { ...tickOpts, maxTicksLimit: 14, autoSkip: true }
+        }
       }
     }
   }));
