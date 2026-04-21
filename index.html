@@ -1890,8 +1890,19 @@ function renderDashboard(container) {
   const tp = stats ? stats.totalProfit : 0;
   const heroClass = tp >= 0 ? 'positive' : 'negative';
 
-  // Recent sessions
-  const recent = [...sessions].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
+  // Recent days (group sessions by date so each row = one day)
+  const byDay = {};
+  for (const s of sessions) {
+    if (!s.date) continue;
+    const d = byDay[s.date] || (byDay[s.date] = { date: s.date, profit: 0, hours: 0, count: 0, gameTypes: new Set(), stakesSet: new Set(), locations: new Set() });
+    d.profit += (s.cashOut || 0) - (s.buyIn || 0);
+    d.hours  += parseFloat(s.duration) || 0;
+    d.count++;
+    if (s.gameType) d.gameTypes.add(s.gameType);
+    if (s.stakes)   d.stakesSet.add(s.stakes);
+    if (s.location) d.locations.add(s.location);
+  }
+  const recent = Object.values(byDay).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
 
   let streakHtml = '';
   if (stats && stats.streak > 0) {
@@ -1953,18 +1964,21 @@ function renderDashboard(container) {
     <div class="dash-grid">
       <div class="card">
         <div class="card-header">
-          <div class="card-title-lg">Recent Sessions</div>
+          <div class="card-title-lg">Recent Days</div>
           <button class="btn btn-primary btn-sm" onclick="switchView('sessions')">+ Add</button>
         </div>
         ${recent.length === 0 ? `<div class="empty-state"><div class="empty-icon">🃏</div><div class="empty-title">No sessions yet</div><div class="empty-sub">Log your first session to get started</div></div>` :
-          recent.map(s => {
-            const p = s.cashOut - s.buyIn;
+          recent.map(d => {
+            const games = [...d.gameTypes].join(', ') || 'Unknown';
+            const stakesStr = [...d.stakesSet].join(', ');
+            const loc = [...d.locations].join(', ') || 'Unknown';
+            const sessLabel = d.count === 1 ? '1 session' : `${d.count} sessions`;
             return `<div class="recent-session">
               <div class="recent-left">
-                <div class="recent-game">${s.gameType || 'Unknown'} ${s.stakes ? '(' + s.stakes + ')' : ''}</div>
-                <div class="recent-meta">${s.date} · ${s.location || 'Unknown'} · ${s.duration ? s.duration + 'h' : '-'}</div>
+                <div class="recent-game">${games}${stakesStr ? ' (' + stakesStr + ')' : ''}</div>
+                <div class="recent-meta">${d.date} · ${loc} · ${d.hours ? d.hours.toFixed(1) + 'h' : '-'} · ${sessLabel}</div>
               </div>
-              <div class="recent-profit ${cls(p)}">${fmt(p)}</div>
+              <div class="recent-profit ${cls(d.profit)}">${fmt(d.profit)}</div>
             </div>`;
           }).join('')}
       </div>
