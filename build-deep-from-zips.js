@@ -206,6 +206,8 @@ function classifyPLO(cardsStr) {
 
 // === Parse one session XML ===
 const seenSessionCodes = new Set();
+const seenHandCodes = new Set(); // per-hand dedup (gamecode is globally unique on iPoker)
+let dupHandsSkipped = 0;
 async function parseSession(text) {
   const doc = new DOMParser({ errorHandler: { warning:()=>{}, error:()=>{}, fatalError:()=>{} } }).parseFromString(text, 'text/xml');
   const sessEl = doc.getElementsByTagName('session')[0];
@@ -231,8 +233,21 @@ async function parseSession(text) {
   const ym = `${dm[3]}-${dm[1]}`;
   const dow = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][date.getDay()];
   const hour = date.getHours();
-  const games = doc.getElementsByTagName('game');
+  const gamesRaw = doc.getElementsByTagName('game');
   const tablesize = parseInt(det(gen, 'tablesize')) || 6;
+
+  // === Per-hand dedup (gamecode is globally unique on iPoker) ===
+  // Filter out hands already seen in a previously parsed zip/session.
+  const games = [];
+  for (let g = 0; g < gamesRaw.length; g++) {
+    const gc = gamesRaw[g].getAttribute('gamecode');
+    if (gc) {
+      if (seenHandCodes.has(gc)) { dupHandsSkipped++; continue; }
+      seenHandCodes.add(gc);
+    }
+    games.push(gamesRaw[g]);
+  }
+  if (games.length === 0) return; // entire session was duplicate hands
 
   if (isTournament) {
     // === TOURNAMENT SESSION ===
@@ -870,6 +885,7 @@ async function main() {
   console.log(`Hands:    ${agg.total_hands}`);
   console.log(`P&L:      €${agg.total_pnl.toFixed(2)}`);
   console.log(`Rake:     €${agg.total_rake.toFixed(2)}`);
+  console.log(`Dedup:    ${dupHandsSkipped} duplicate hands skipped (by gamecode)`);
 
   // === BUILD FINAL JSON ===
   const dates = agg.hand_dates.sort((a,b) => a-b);
