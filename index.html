@@ -4788,6 +4788,24 @@ function renderPlayerStatsView(container) {
       return { p, h, sessions: arr.length, bb100: h > 0 && ab > 0 ? (p/ab)/(h/100) : 0 };
     }
     const a5 = aggSess(last5), a30 = aggSess(last30), aLast = lastSession ? { p: lastSession.cashOut - lastSession.buyIn, h: lastSession.hands||0, date: lastSession.date, stakes: lastSession.stakes } : null;
+    // Group sessions by date for "Recent Days" table + "Last Day" hero card
+    const byDayMap = {};
+    for (const s of sortedSessions) {
+      const k = s.date;
+      const bb = s.stakes ? parseFloat(s.stakes.split('/')[1])||0 : 0;
+      const pnl = (s.cashOut||0) - (s.buyIn||0);
+      const d = byDayMap[k] || (byDayMap[k] = { date: k, p: 0, h: 0, count: 0, bbWeighted: 0, bbHands: 0, stakesSet: new Set() });
+      d.p += pnl; d.h += (s.hands||0); d.count++;
+      if (s.stakes) d.stakesSet.add(s.stakes);
+      if (bb > 0 && s.hands) { d.bbWeighted += bb * s.hands; d.bbHands += s.hands; }
+    }
+    const sortedDays = Object.values(byDayMap).sort((a,b) => b.date.localeCompare(a.date));
+    sortedDays.forEach(d => {
+      d.stakes = [...d.stakesSet].join(', ') || '-';
+      const ab = d.bbHands > 0 ? d.bbWeighted / d.bbHands : 0;
+      d.bb100 = d.h > 0 && ab > 0 ? (d.p/ab)/(d.h/100) : 0;
+    });
+    const lastDay = sortedDays[0] || null;
     // Trend: last 5 vs prior 5
     const prior5cutoff = new Date(today); prior5cutoff.setDate(prior5cutoff.getDate() - 10);
     const prior5 = sortedSessions.filter(s => new Date(s.date) >= prior5cutoff && new Date(s.date) < last5cutoff);
@@ -4812,19 +4830,19 @@ function renderPlayerStatsView(container) {
           <div class="ps-hero-val" style="color:${trendCol}">${trendArrow} ${(a5.bb100 - ap.bb100>=0?'+':'')}${(a5.bb100 - ap.bb100).toFixed(2)} bb/100</div>
           <div class="ps-hero-sub">Prior 5d: ${fBB(ap.bb100)} bb/100 (${ap.sessions} sessions)</div>
         </div>
-        <div class="ps-hero-card ${aLast && aLast.p>=0?'green':'red'}">
-          <div class="ps-hero-label">Last Session</div>
-          <div class="ps-hero-val" style="color:${aLast && aLast.p>=0?'var(--green)':'var(--red)'}">${aLast?f(aLast.p):'\u2014'}</div>
-          <div class="ps-hero-sub">${aLast?(aLast.h+' hands \u00b7 '+aLast.stakes+' \u00b7 '+aLast.date):'No data'}</div>
+        <div class="ps-hero-card ${lastDay && lastDay.p>=0?'green':'red'}">
+          <div class="ps-hero-label">Last Day</div>
+          <div class="ps-hero-val" style="color:${lastDay && lastDay.p>=0?'var(--green)':'var(--red)'}">${lastDay?f(lastDay.p):'\u2014'}</div>
+          <div class="ps-hero-sub">${lastDay?(lastDay.date+' \u00b7 '+lastDay.h.toLocaleString()+' hands \u00b7 '+lastDay.count+(lastDay.count===1?' session':' sessions')+' \u00b7 '+lastDay.stakes):'No data'}</div>
         </div>
       </div>
 
       <div class="ps-card">
-        <div class="ps-card-title">\ud83d\udcca Recent Sessions (Last 10)</div>
+        <div class="ps-card-title">\ud83d\udcca Recent Days (Last 10)</div>
         <table class="ps-table">
-          <thead><tr><th>Date</th><th>Stakes</th><th>Hands</th><th>P&L</th><th>bb/100</th></tr></thead>
+          <thead><tr><th>Date</th><th>Stakes</th><th>Sessions</th><th>Hands</th><th>P&L</th><th>bb/100</th></tr></thead>
           <tbody>
-            ${sortedSessions.slice(0, 10).map(s => { const pnl = s.cashOut - s.buyIn; const bb = s.stakes ? parseFloat(s.stakes.split('/')[1])||0 : 0; const bb100 = bb>0 && s.hands>0 ? (pnl/bb)/(s.hands/100) : 0; return '<tr><td class="ps-pos">'+s.date+'</td><td>'+(s.stakes||'-')+'</td><td>'+(s.hands||0).toLocaleString()+'</td><td class="'+c(pnl)+'">'+f(pnl)+'</td><td class="'+c(bb100)+'">'+fBB(bb100)+'</td></tr>'; }).join('')}
+            ${sortedDays.slice(0, 10).map(d => '<tr><td class="ps-pos">'+d.date+'</td><td>'+d.stakes+'</td><td>'+d.count+'</td><td>'+d.h.toLocaleString()+'</td><td class="'+c(d.p)+'">'+f(d.p)+'</td><td class="'+c(d.bb100)+'">'+fBB(d.bb100)+'</td></tr>').join('')}
           </tbody>
         </table>
       </div>
