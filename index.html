@@ -1940,6 +1940,11 @@ function renderDashboard(container) {
 
     <div class="quick-stats">
       <div class="stat-card green">
+        <div class="stat-label">Last Day</div>
+        <div class="stat-value ${recent.length ? cls(recent[0].profit) : ''}">${recent.length ? fmt(recent[0].profit) : '0'}</div>
+        <div class="stat-sub">${recent.length ? recent[0].date + ' · ' + recent[0].count + (recent[0].count===1?' session':' sessions') : 'no sessions'}</div>
+      </div>
+      <div class="stat-card green">
         <div class="stat-label">This Month</div>
         <div class="stat-value ${monthlyStats ? cls(monthlyStats.totalProfit) : ''}">${monthlyStats ? fmt(monthlyStats.totalProfit) : '0'}</div>
         <div class="stat-sub">${monthlySessions.length} sessions</div>
