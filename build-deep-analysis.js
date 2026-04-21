@@ -1144,6 +1144,26 @@ function renderPlayerStatsView(container) {
       return { p, h, sessions: arr.length, bb100: h > 0 && ab > 0 ? (p/ab)/(h/100) : 0 };
     }
     const a5 = aggSess(last5), a30 = aggSess(last30), aLast = lastSession ? { p: lastSession.cashOut - lastSession.buyIn, h: lastSession.hands||0, date: lastSession.date, stakes: lastSession.stakes } : null;
+    // Group sessions by date for Last Day card + Recent Days table
+    const byDayMap = {};
+    for (const s of sortedSessions) {
+      if (!s.date) continue;
+      const bb = s.stakes ? parseFloat(s.stakes.split('/')[1])||0 : 0;
+      const pnl = (s.cashOut||0) - (s.buyIn||0);
+      const d = byDayMap[s.date] || (byDayMap[s.date] = { date: s.date, p: 0, h: 0, count: 0, bbWeighted: 0, bbHands: 0, stakesSet: new Set() });
+      d.p += pnl; d.h += (s.hands||0); d.count++;
+      if (s.stakes) d.stakesSet.add(s.stakes);
+      if (bb > 0 && s.hands) { d.bbWeighted += bb * s.hands; d.bbHands += s.hands; }
+    }
+    const sortedDays = Object.values(byDayMap).sort((a,b) => b.date.localeCompare(a.date));
+    sortedDays.forEach(d => {
+      d.stakes = [...d.stakesSet].join(', ') || '-';
+      const ab = d.bbHands > 0 ? d.bbWeighted / d.bbHands : 0;
+      d.bb100 = d.h > 0 && ab > 0 ? (d.p/ab)/(d.h/100) : 0;
+    });
+    const lastDay = sortedDays[0] || null;
+    // Full-stat snapshot of the last day from build-time deep analysis (when available)
+    const lastDayDeep = D.last_day || null;
     // Trend: last 5 vs prior 5
     const prior5cutoff = new Date(today); prior5cutoff.setDate(prior5cutoff.getDate() - 10);
     const prior5 = sortedSessions.filter(s => new Date(s.date) >= prior5cutoff && new Date(s.date) < last5cutoff);
@@ -1168,19 +1188,101 @@ function renderPlayerStatsView(container) {
           <div class="ps-hero-val" style="color:\${trendCol}">\${trendArrow} \${(a5.bb100 - ap.bb100>=0?'+':'')}\${(a5.bb100 - ap.bb100).toFixed(2)} bb/100</div>
           <div class="ps-hero-sub">Prior 5d: \${fBB(ap.bb100)} bb/100 (\${ap.sessions} sessions)</div>
         </div>
-        <div class="ps-hero-card \${aLast && aLast.p>=0?'green':'red'}">
-          <div class="ps-hero-label">Last Session</div>
-          <div class="ps-hero-val" style="color:\${aLast && aLast.p>=0?'var(--green)':'var(--red)'}">\${aLast?f(aLast.p):'\\u2014'}</div>
-          <div class="ps-hero-sub">\${aLast?(aLast.h+' hands \\u00b7 '+aLast.stakes+' \\u00b7 '+aLast.date):'No data'}</div>
+        <div class="ps-hero-card \${lastDay && lastDay.p>=0?'green':'red'}">
+          <div class="ps-hero-label">Last Day</div>
+          <div class="ps-hero-val" style="color:\${lastDay && lastDay.p>=0?'var(--green)':'var(--red)'}">\${lastDay?f(lastDay.p):'\\u2014'}</div>
+          <div class="ps-hero-sub">\${lastDay?(lastDay.date+' \\u00b7 '+lastDay.h.toLocaleString()+' hands \\u00b7 '+lastDay.count+(lastDay.count===1?' session':' sessions')+' \\u00b7 '+lastDay.stakes):'No data'}</div>
         </div>
       </div>
 
+      \${lastDayDeep && lastDayDeep.stats ? (() => {
+        const ld = lastDayDeep, st = ld.stats, bp = st.by_position || {};
+        const positions = ['UTG','HJ','CO','BTN','SB','BB'];
+        const tgt = (D.period_comparison && D.period_comparison.target_stats_from_good_period) || {};
+        function statRow(label, val, target, lowerIsBetter) {
+          if (val === undefined || val === null) return '';
+          const tNum = typeof target === 'number' ? target : null;
+          let cls = 'neutral', arrow = '';
+          if (tNum !== null) {
+            const diff = val - tNum;
+            const bad = lowerIsBetter ? diff > 0 : diff < 0;
+            const good = lowerIsBetter ? diff < 0 : diff > 0;
+            if (Math.abs(diff) < 0.5) { cls = 'neutral'; }
+            else if (bad)  { cls = 'negative'; arrow = lowerIsBetter ? ' \u25B2' : ' \u25BC'; }
+            else if (good) { cls = 'positive'; arrow = lowerIsBetter ? ' \u25BC' : ' \u25B2'; }
+          }
+          return '<tr><td>'+label+'</td><td class="'+cls+'">'+val.toFixed(1)+'%'+arrow+'</td><td class="ps-pos" style="color:var(--text3)">'+(tNum!==null?tNum.toFixed(1)+'%':'\u2014')+'</td></tr>';
+        }
+        return \`
+        <div class="ps-card" style="border-color:var(--gold-dim);background:linear-gradient(135deg, rgba(245,158,11,0.04), rgba(245,158,11,0.01))">
+          <div class="ps-card-title" style="color:var(--gold)">\\ud83c\\udfaf Last Day Full Stats \\u2014 \${ld.date}</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0.6rem;margin-bottom:1rem">
+            <div class="ps-mini-stat"><div class="ps-mini-label">P&L</div><div class="ps-mini-val \${ld.pnl_eur>=0?'positive':'negative'}">\${f(ld.pnl_eur)}</div></div>
+            <div class="ps-mini-stat"><div class="ps-mini-label">bb/100</div><div class="ps-mini-val \${ld.bb_per_100>=0?'positive':'negative'}">\${fBB(ld.bb_per_100)}</div></div>
+            <div class="ps-mini-stat"><div class="ps-mini-label">Hands</div><div class="ps-mini-val">\${ld.hands.toLocaleString()}</div></div>
+            <div class="ps-mini-stat"><div class="ps-mini-label">Sessions</div><div class="ps-mini-val">\${ld.sessions}</div></div>
+            <div class="ps-mini-stat"><div class="ps-mini-label">Hands w/ Pos</div><div class="ps-mini-val">\${(st.hands||0).toLocaleString()}</div></div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem">
+            <div>
+              <div class="ps-card-subtitle" style="margin-bottom:0.4rem;color:var(--text2);font-weight:600">Preflop</div>
+              <table class="ps-table">
+                <thead><tr><th>Stat</th><th>Last Day</th><th>Target</th></tr></thead>
+                <tbody>
+                  \${statRow('VPIP', st.vpip, tgt.vpip, true)}
+                  \${statRow('PFR', st.pfr, tgt.pfr, false)}
+                  \${statRow('VPIP-PFR Gap', st.vpip_pfr_gap, tgt.vpip_pfr_gap, true)}
+                  \${statRow('Limp %', st.limp_pct, tgt.limp_pct, true)}
+                  \${statRow('Open Raise %', st.open_raise_pct, tgt.open_raise_pct, false)}
+                  \${statRow('3-bet %', st.three_bet_pct, tgt.three_bet_pct, false)}
+                  \${statRow('Cold Call %', st.cold_call_pct, tgt.cold_call_pct, true)}
+                  \${statRow('Fold to 3bet %', st.fold_to_3bet_pct, tgt.fold_to_3bet_pct, true)}
+                  \${statRow('4-bet %', st.four_bet_pct, tgt.four_bet_pct, false)}
+                  \${statRow('Fold vs Raise %', st.fold_vs_raise_pct, tgt.fold_vs_raise_pct, true)}
+                </tbody>
+              </table>
+            </div>
+            <div>
+              <div class="ps-card-subtitle" style="margin-bottom:0.4rem;color:var(--text2);font-weight:600">Postflop</div>
+              <table class="ps-table">
+                <thead><tr><th>Stat</th><th>Last Day</th><th>Target</th></tr></thead>
+                <tbody>
+                  \${statRow('C-bet Flop %', st.cbet_flop_pct, tgt.cbet_flop_pct, false)}
+                  \${statRow('C-bet Turn %', st.cbet_turn_pct, tgt.cbet_turn_pct, false)}
+                  \${statRow('Donk Bet %', st.donk_bet_pct, tgt.donk_bet_pct, true)}
+                  \${statRow('Check-Raise Flop %', st.check_raise_flop_pct, tgt.check_raise_flop_pct, false)}
+                  \${statRow('Fold to C-bet %', st.fold_to_cbet_pct, tgt.fold_to_cbet_pct, true)}
+                  \${statRow('WTSD %', st.wtsd_pct, null, false)}
+                  \${statRow('W$SD %', st.wsd_pct, null, false)}
+                  \${statRow('River Fold to Bet %', st.river_fold_to_bet_pct, null, true)}
+                  <tr><td>AF</td><td class="\${st.af>=2?'positive':st.af<1?'negative':'neutral'}">\${(st.af||0).toFixed(2)}</td><td class="ps-pos" style="color:var(--text3)">\${tgt.af!==undefined?tgt.af.toFixed(2):'\\u2014'}</td></tr>
+                  <tr><td>Avg Open BB</td><td>\${(st.avg_open_size_bb||0).toFixed(2)}</td><td class="ps-pos" style="color:var(--text3)">\\u2014</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div style="margin-top:1rem">
+            <div class="ps-card-subtitle" style="margin-bottom:0.4rem;color:var(--text2);font-weight:600">By Position (Last Day)</div>
+            <table class="ps-table">
+              <thead><tr><th>Pos</th><th>Hands</th><th>VPIP</th><th>PFR</th><th>RFI</th><th>Limp</th><th>3-bet</th><th>Cold Call</th><th>Fold vs Raise</th></tr></thead>
+              <tbody>
+                \${positions.map(p => { const x = bp[p]; if (!x) return ''; return '<tr><td class="ps-pos">'+p+'</td><td>'+x.hands+'</td><td>'+(x.vpip||0).toFixed(1)+'%</td><td>'+(x.pfr||0).toFixed(1)+'%</td><td>'+(x.rfi||0).toFixed(1)+'%</td><td>'+(x.limp||0).toFixed(1)+'%</td><td>'+(x.three_bet||0).toFixed(1)+'%</td><td>'+(x.cold_call||0).toFixed(1)+'%</td><td>'+(x.fold_vs_raise||0).toFixed(1)+'%</td></tr>'; }).join('')}
+              </tbody>
+            </table>
+          </div>
+          <div style="margin-top:0.6rem;font-size:0.72rem;color:var(--text3);font-style:italic">
+            \\u25B2 = above target, \\u25BC = below target. Color: green = better than target, red = worse. "Hands w/ Pos" reflects hands where dealer/seat resolved (some hands can lack position metadata).
+          </div>
+        </div>
+        \`;
+      })() : \`<div class="ps-card"><div class="ps-card-title">\\ud83c\\udfaf Last Day Full Stats</div><div style="padding:1rem;color:var(--text3)">No deep stats available for the most recent day. Re-run <code>node build-deep-from-zips.js</code> to regenerate.</div></div>\`}
+
       <div class="ps-card">
-        <div class="ps-card-title">\\ud83d\\udcca Recent Sessions (Last 10)</div>
+        <div class="ps-card-title">\\ud83d\\udcca Recent Days (Last 10)</div>
         <table class="ps-table">
-          <thead><tr><th>Date</th><th>Stakes</th><th>Hands</th><th>P&L</th><th>bb/100</th></tr></thead>
+          <thead><tr><th>Date</th><th>Stakes</th><th>Sessions</th><th>Hands</th><th>P&L</th><th>bb/100</th></tr></thead>
           <tbody>
-            \${sortedSessions.slice(0, 10).map(s => { const pnl = s.cashOut - s.buyIn; const bb = s.stakes ? parseFloat(s.stakes.split('/')[1])||0 : 0; const bb100 = bb>0 && s.hands>0 ? (pnl/bb)/(s.hands/100) : 0; return '<tr><td class="ps-pos">'+s.date+'</td><td>'+(s.stakes||'-')+'</td><td>'+(s.hands||0).toLocaleString()+'</td><td class="'+c(pnl)+'">'+f(pnl)+'</td><td class="'+c(bb100)+'">'+fBB(bb100)+'</td></tr>'; }).join('')}
+            \${sortedDays.slice(0, 10).map(d => '<tr><td class="ps-pos">'+d.date+'</td><td>'+d.stakes+'</td><td>'+d.count+'</td><td>'+d.h.toLocaleString()+'</td><td class="'+c(d.p)+'">'+f(d.p)+'</td><td class="'+c(d.bb100)+'">'+fBB(d.bb100)+'</td></tr>').join('')}
           </tbody>
         </table>
       </div>

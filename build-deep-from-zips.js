@@ -79,6 +79,8 @@ function makeAcc() {
     good: makePeriod('good'),
     bad:  makePeriod('bad')
   },
+  // Per-day full aggregators (date string -> period-shaped acc) so we can emit Last Day full stats
+  by_day_full: {},
   hands_no_pos: 0,  // hands where dealer/seat could not be resolved
 
   // Opponents
@@ -363,13 +365,26 @@ async function parseSession(text) {
   period.weekly[wkKey] = period.weekly[wkKey] || { hands:0, pnl:0 };
   period.weekly[wkKey].hands += games.length; period.weekly[wkKey].pnl += sessionPnl;
 
-  // Per-hand parsing — pass period sub-aggregator so VPIP/PFR etc. are tracked per period too
+  // Per-day aggregator (for last-day full-stat snapshot)
+  const dayAgg = agg.by_day_full[sessionDateStr] || (agg.by_day_full[sessionDateStr] = makePeriod(sessionDateStr));
+  // Mirror session-level totals into the day aggregator too
+  dayAgg.sessions++;
+  dayAgg.hands += games.length;
+  dayAgg.pnl += sessionPnl;
+  dayAgg.dates.push(sessionDateStr);
+  dayAgg.by_stakes[stakesKey] = dayAgg.by_stakes[stakesKey] || { hands:0, pnl:0, sessions:0 };
+  dayAgg.by_stakes[stakesKey].hands += games.length; dayAgg.by_stakes[stakesKey].pnl += sessionPnl; dayAgg.by_stakes[stakesKey].sessions++;
+
+  // Per-hand parsing — pass [period, day] so VPIP/PFR etc. are tracked per period AND per day
   for (let g = 0; g < games.length; g++) {
-    parseHand(games[g], bbSize, agg, period);
+    parseHand(games[g], bbSize, agg, [period, dayAgg]);
   }
 }
 
-function parseHand(gameEl, bbSize, agg, periodAgg) {
+function parseHand(gameEl, bbSize, agg, extras) {
+  // extras: array of additional period-shaped aggregators (e.g. [period, dayAgg]) to mirror bumps into
+  if (!extras) extras = [];
+  else if (!Array.isArray(extras)) extras = [extras];
   // Extract players & dealer
   const playersEls = gameEl.getElementsByTagName('player');
   const playersList = [];
@@ -395,7 +410,7 @@ function parseHand(gameEl, bbSize, agg, periodAgg) {
   if (!heroPos || !agg.pre[heroPos]) { agg.hands_no_pos = (agg.hands_no_pos||0) + 1; return; }
 
   agg.pre[heroPos].hands++;
-  if (periodAgg && periodAgg.pre[heroPos]) periodAgg.pre[heroPos].hands++;
+  for (const x of extras) if (x && x.pre[heroPos]) x.pre[heroPos].hands++;
 
   // Get hero's pocket cards for hand quality
   const cardsEls = gameEl.getElementsByTagName('cards');
@@ -475,17 +490,17 @@ function parseHand(gameEl, bbSize, agg, periodAgg) {
   }
   if (raisesBeforeHero > 0) heroFacedRaise = true;
 
-  // === Position-specific aggregates (mirror to periodAgg if present) ===
+  // === Position-specific aggregates (mirror to all extras) ===
   const posAgg  = agg.pre[heroPos];
-  const posAggP = periodAgg ? periodAgg.pre[heroPos] : null;
-  const bumpPos = (k, n=1) => { posAgg[k] += n; if (posAggP) posAggP[k] += n; };
+  const extraPosAggs = extras.map(x => x.pre[heroPos]).filter(Boolean);
+  const bumpPos = (k, n=1) => { posAgg[k] += n; for (const p of extraPosAggs) p[k] += n; };
 
   if (heroVPIP) bumpPos('vpip');
   if (heroPFR)  bumpPos('pfr');
   if (heroLimped) {
     bumpPos('limp');
     agg.limp_count++; agg.limp_pnl_bb += heroNet / bbSize;
-    if (periodAgg) { periodAgg.limp_count++; periodAgg.limp_pnl_bb += heroNet / bbSize; }
+    for (const x of extras) { x.limp_count++; x.limp_pnl_bb += heroNet / bbSize; }
   }
 
   // RFI: hero opens (raises) when no one has voluntarily put money in
@@ -570,12 +585,12 @@ function parseHand(gameEl, bbSize, agg, periodAgg) {
   // Init by-position postflop accumulator
   const initBP = (target) => { target[heroPos] = target[heroPos] || { saw_flop:0, saw_turn:0, saw_river:0, cbet:0, cbet_opp:0, fold_to_cbet:0, fold_to_cbet_opp:0, wtsd:0, wsd:0 }; };
   initBP(agg.post_by_pos);
-  if (periodAgg) initBP(periodAgg.post_by_pos);
+  for (const x of extras) initBP(x.post_by_pos);
 
-  const bumpFlop  = (k, n=1) => { agg.post.flop[k]  += n; if (periodAgg) periodAgg.post.flop[k]  += n; };
-  const bumpTurn  = (k, n=1) => { agg.post.turn[k]  += n; if (periodAgg) periodAgg.post.turn[k]  += n; };
-  const bumpRiver = (k, n=1) => { agg.post.river[k] += n; if (periodAgg) periodAgg.post.river[k] += n; };
-  const bumpBP    = (k, n=1) => { agg.post_by_pos[heroPos][k] += n; if (periodAgg) periodAgg.post_by_pos[heroPos][k] += n; };
+  const bumpFlop  = (k, n=1) => { agg.post.flop[k]  += n; for (const x of extras) x.post.flop[k]  += n; };
+  const bumpTurn  = (k, n=1) => { agg.post.turn[k]  += n; for (const x of extras) x.post.turn[k]  += n; };
+  const bumpRiver = (k, n=1) => { agg.post.river[k] += n; for (const x of extras) x.post.river[k] += n; };
+  const bumpBP    = (k, n=1) => { agg.post_by_pos[heroPos][k] += n; for (const x of extras) x.post_by_pos[heroPos][k] += n; };
 
   // IP = hero acted last preflop (BTN typically, CO if no raise from BTN)
   const isIP = heroPos === 'BTN' || (heroPos === 'CO' && raisesBeforeHero === 0);
@@ -1188,6 +1203,25 @@ async function main() {
   const goodPeriod = computePeriodSnapshot(agg.period_split.good);
   const badPeriod  = computePeriodSnapshot(agg.period_split.bad);
 
+  // === LAST DAY snapshot ===
+  // Find the most recent date with hands and snapshot its full stats
+  const dayKeys = Object.keys(agg.by_day_full).sort();
+  let lastDaySnap = null;
+  if (dayKeys.length > 0) {
+    const lastKey = dayKeys[dayKeys.length - 1];
+    const lastDayAgg = agg.by_day_full[lastKey];
+    if (lastDayAgg && lastDayAgg.hands > 0) {
+      lastDaySnap = computePeriodSnapshot(lastDayAgg);
+      lastDaySnap.date = lastKey;
+    }
+  }
+  // Also build last-7-days quick rollup (date -> brief stats) for a recent-days table
+  const last7 = dayKeys.slice(-7).reverse().map(k => {
+    const d = agg.by_day_full[k];
+    const snap = d.hands > 0 ? computePeriodSnapshot(d) : null;
+    return snap ? { date: k, pnl_eur: snap.pnl_eur, hands: snap.hands, sessions: snap.sessions, bb_per_100: snap.bb_per_100, stats: snap.stats } : { date: k, pnl_eur: 0, hands: 0, sessions: 0, bb_per_100: 0, stats: null };
+  });
+
   // Compute differences (bad - good) for each numeric stat
   // Schema kept compatible with renderer in index.html (diff/direction/impact/note)
   const statDiffs = {};
@@ -1305,6 +1339,8 @@ async function main() {
       key_changes: keyChanges.slice(0, 10),
       target_stats_from_good_period: goodPeriod.stats || { _description: 'No good-period data', vpip: overallVPIP, pfr: overallPFR, vpip_pfr_gap: overallVPIP-overallPFR, limp_pct: overallLimp, three_bet_pct: overall3bet, cbet_flop_pct: postComp.flop.cbet_pct, donk_bet_pct: postComp.flop.donk_pct, check_raise_flop_pct: postComp.flop.xr_pct, af: Math.round(af*100)/100, by_position: preByPos }
     },
+    last_day: lastDaySnap,
+    last_7_days: last7,
     weekly_pnl_curve: weeklyCurve,
     time_analysis: { by_day_of_week: dowOut, by_hour_of_day: hourOut },
     tilt_analysis: {
