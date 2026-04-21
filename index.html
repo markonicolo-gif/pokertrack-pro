@@ -1168,6 +1168,18 @@ tr:last-child td { border-bottom: none; }
 .da-mini-val { font-size:0.78rem; font-weight:700; color:var(--text); }
 @media (max-width: 900px) { .da-stats-grid { grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); } .ps-grid-3 { grid-template-columns:1fr; } }
 
+
+/* ===== DEEP ANALYSIS COMPONENTS ===== */
+.da-stats-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:0.75rem; margin-bottom:1rem; }
+.da-stat-box { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:0.85rem 1rem; text-align:center; }
+.da-stat-label { font-size:0.68rem; color:var(--text3); text-transform:uppercase; letter-spacing:0.5px; font-weight:600; margin-bottom:0.3rem; }
+.da-stat-val { font-size:1.15rem; font-weight:800; color:var(--text); }
+.da-mini-stats { display:flex; flex-direction:column; gap:0.3rem; }
+.da-mini-stats > div { display:flex; justify-content:space-between; padding:0.3rem 0; border-bottom:1px solid rgba(255,255,255,0.03); }
+.da-mini-label { font-size:0.78rem; color:var(--text2); }
+.da-mini-val { font-size:0.78rem; font-weight:700; color:var(--text); }
+@media (max-width: 900px) { .da-stats-grid { grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); } .ps-grid-3 { grid-template-columns:1fr; } }
+
 /* ===== PLAYER STATS VIEW ===== */
 .ps-layout { display:flex; flex-direction:column; gap:1.25rem; }
 .ps-section-title { font-size:0.72rem; font-weight:700; color:var(--text3); text-transform:uppercase; letter-spacing:1.2px; margin-bottom:0.5rem; }
