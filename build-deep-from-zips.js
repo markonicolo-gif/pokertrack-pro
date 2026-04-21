@@ -1159,15 +1159,32 @@ async function main() {
   const badPeriod  = computePeriodSnapshot(agg.period_split.bad);
 
   // Compute differences (bad - good) for each numeric stat
+  // Schema kept compatible with renderer in index.html (diff/direction/impact/note)
   const statDiffs = {};
   const keyChanges = [];
+  // Stats where INCREASE = bad (looser leaks, more passive defense)
+  const higherIsWorse = new Set(['limp_pct','fold_to_3bet_pct','fold_to_cbet_pct','fold_vs_raise_pct','river_fold_to_bet_pct','donk_bet_pct']);
+  // Stats where DECREASE = bad (less aggression, fewer opens, less playing)
+  const lowerIsWorse = new Set(['vpip','pfr','three_bet_pct','four_bet_pct','open_raise_pct','cold_call_pct','cbet_flop_pct','cbet_turn_pct','check_raise_flop_pct','wtsd_pct','wsd_pct','af','avg_open_size_bb']);
+  function arrowFor(stat, d) {
+    if (d === 0) return '→ same';
+    const worsened = (d > 0 && higherIsWorse.has(stat)) || (d < 0 && lowerIsWorse.has(stat));
+    const improved = (d < 0 && higherIsWorse.has(stat)) || (d > 0 && lowerIsWorse.has(stat));
+    if (worsened) return d > 0 ? '↑ worse' : '↓ worse';
+    if (improved) return d > 0 ? '↑ better' : '↓ better';
+    return d > 0 ? '↑' : '↓';
+  }
   if (goodPeriod.stats && badPeriod.stats) {
     for (const k of Object.keys(goodPeriod.stats)) {
       if (typeof goodPeriod.stats[k] !== 'number') continue;
       const d = Math.round((badPeriod.stats[k] - goodPeriod.stats[k]) * 10) / 10;
-      statDiffs[k] = { good: goodPeriod.stats[k], bad: badPeriod.stats[k], delta: d };
+      statDiffs[k] = { good: goodPeriod.stats[k], bad: badPeriod.stats[k], diff: d, delta: d, direction: arrowFor(k, d) };
       if (Math.abs(d) >= 2 && k !== 'hands') {
-        keyChanges.push({ stat: k, good: goodPeriod.stats[k], bad: badPeriod.stats[k], delta: d });
+        const absD = Math.abs(d);
+        const impact = absD >= 5 ? 'critical' : absD >= 3 ? 'major' : 'minor';
+        const label = k.replace(/_/g,' ').replace(/pct/g,'%');
+        const note = `${label}: ${goodPeriod.stats[k]} → ${badPeriod.stats[k]} (${d > 0 ? '+' : ''}${d})`;
+        keyChanges.push({ stat: k, good: goodPeriod.stats[k], bad: badPeriod.stats[k], delta: d, diff: d, impact, note });
       }
     }
     keyChanges.sort((a,b) => Math.abs(b.delta) - Math.abs(a.delta));
