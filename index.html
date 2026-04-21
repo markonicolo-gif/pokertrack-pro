@@ -2839,9 +2839,25 @@ function renderAnalyticsView(container) {
 
     <div class="charts-grid">
       <div class="chart-card full">
-        <h3>&#128200; Cumulative Profit</h3>
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem">
+          <h3 style="margin:0">&#128200; Cumulative Profit</h3>
+          <div style="display:flex;gap:0.6rem;align-items:center;font-size:0.72rem;color:var(--text2)">
+            <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer">
+              <input type="checkbox" id="cum-show-ev" checked style="cursor:pointer"> Expected Value (smoothed skill line)
+            </label>
+            <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer">
+              <input type="checkbox" id="cum-show-trend" checked style="cursor:pointer"> Linear trend
+            </label>
+            <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer">
+              <input type="checkbox" id="cum-show-dd" checked style="cursor:pointer"> Drawdown shading
+            </label>
+          </div>
+        </div>
         <div class="cum-stats-bar" id="cum-stats-bar"></div>
         <canvas id="ch-cum"></canvas>
+        <div style="margin-top:0.6rem;font-size:0.7rem;color:var(--text2);line-height:1.5">
+          <strong style="color:#06b6d4">EV (smoothed):</strong> per-session $/hand smoothed with an adaptive centered window, then re-projected by hand counts \u2014 represents your underlying skill curve with single-session variance removed. Gap above EV = running hot; gap below = running cold. Not true all-in EV (which requires hand-by-hand showdown equity).
+        </div>
       </div>
       <div class="chart-card"><h3>&#128197; Monthly Results</h3><canvas id="ch-monthly"></canvas></div>
       <div class="chart-card"><h3>&#128203; Session Distribution</h3><canvas id="ch-dist"></canvas></div>
@@ -3036,6 +3052,63 @@ function renderAllCharts(container, sessions) {
   const intercept = yMean - slope * xMean;
   const trendLine = cumPts.map((_, i) => Math.round((intercept + slope * i) * 100) / 100);
 
+  // === Expected Value (smoothed skill-line proxy) ===
+  // True AIEV needs per-hand showdown equity (not in session data). As a defensible
+  // substitute we compute each session's $/hand, smooth that with a centered moving
+  // window (adaptive: ~sqrt(N), min 5, max 25), then re-project by hand counts and
+  // accumulate. The result:
+  //   - ends at the same point as the actual line (variance averages out)
+  //   - bends with stake / skill changes (unlike rigid linear regression)
+  //   - diverges from actual where high-variance sessions occurred
+  const sessionUnits = useWeeklyCum
+    ? weekly.map(w => ({ hands: w.hands || 0, pnl: w.profit }))
+    : sorted.map(s => ({ hands: s.hands || 0, pnl: s.cashOut - s.buyIn }));
+  // Per-unit rate: prefer $/hand; if hands missing for a unit, use $/session
+  const useHandRate = sessionUnits.some(u => u.hands > 0);
+  const totalHandsForEV = sessionUnits.reduce((s, u) => s + u.hands, 0);
+  const avgHandsPerUnit = totalHandsForEV > 0 ? totalHandsForEV / sessionUnits.length : 0;
+  const rates = sessionUnits.map(u => {
+    if (useHandRate) {
+      const h = u.hands > 0 ? u.hands : avgHandsPerUnit; // back-fill missing
+      return h > 0 ? u.pnl / h : 0;
+    }
+    return u.pnl;
+  });
+  // Centered moving average — window adapts to dataset size
+  const win = Math.max(5, Math.min(25, Math.round(Math.sqrt(n))));
+  const half = Math.floor(win / 2);
+  const smoothedRates = rates.map((_, i) => {
+    const lo = Math.max(0, i - half);
+    const hi = Math.min(n - 1, i + half);
+    let sum = 0, cnt = 0;
+    for (let j = lo; j <= hi; j++) { sum += rates[j]; cnt++; }
+    return cnt > 0 ? sum / cnt : 0;
+  });
+  // Re-project to per-unit expected pnl, then accumulate
+  let evCum = 0;
+  const evPts = sessionUnits.map((u, i) => {
+    const projected = useHandRate
+      ? smoothedRates[i] * (u.hands > 0 ? u.hands : avgHandsPerUnit)
+      : smoothedRates[i];
+    evCum += projected;
+    return Math.round(evCum * 100) / 100;
+  });
+  // Force endpoint to match actual (corrects tiny rounding drift from back-fill)
+  const evEndDrift = (cumPts[n - 1] || 0) - (evPts[n - 1] || 0);
+  if (n > 1 && Math.abs(evEndDrift) > 0.01) {
+    for (let i = 0; i < n; i++) {
+      evPts[i] = Math.round((evPts[i] + evEndDrift * (i / (n - 1))) * 100) / 100;
+    }
+  }
+  // Variance metric: max abs gap between actual and EV (= biggest swing of luck)
+  let evMaxGap = 0, evMaxGapIdx = 0;
+  for (let i = 0; i < n; i++) {
+    const g = cumPts[i] - evPts[i];
+    if (Math.abs(g) > Math.abs(evMaxGap)) { evMaxGap = g; evMaxGapIdx = i; }
+  }
+  // Current EV gap (positive = running above expectation)
+  const evCurrentGap = (cumPts[n - 1] || 0) - (evPts[n - 1] || 0);
+
   // Render the stats bar above the chart
   const finalPnl = cumPts[cumPts.length - 1] || 0;
   const totalHandsAll = sorted.reduce((s, x) => s + (x.hands || 0), 0);
@@ -3079,6 +3152,11 @@ function renderAllCharts(container, sessions) {
         <div class="cum-stat-sub">${useWeeklyCum ? 'weekly view' : 'session view'}</div>
       </div>
       ` : ''}
+      <div class="cum-stat">
+        <div class="cum-stat-label">Max Luck Swing</div>
+        <div class="cum-stat-value ${evMaxGap >= 0 ? 'positive' : 'negative'}" title="Largest gap between actual P&L and smoothed EV at any point">${evMaxGap >= 0 ? '+' : '-'}€${Math.abs(evMaxGap).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+        <div class="cum-stat-sub">${evMaxGap >= 0 ? 'ran hot' : 'ran cold'} at point ${evMaxGapIdx + 1}</div>
+      </div>
     `;
   }
 
@@ -3140,6 +3218,22 @@ function renderAllCharts(container, sessions) {
       borderDash: [6, 4],
       pointRadius: 0, pointHoverRadius: 0, tension: 0, fill: false, order: 2
     },
+    // Expected Value (smoothed skill line) — variance-stripped projection
+    {
+      label: 'Expected Value (smoothed)',
+      data: evPts,
+      borderColor: '#06b6d4',
+      backgroundColor: 'transparent',
+      borderWidth: 1.75,
+      borderDash: [2, 3],
+      pointRadius: 0, pointHoverRadius: 4,
+      pointHoverBackgroundColor: '#06b6d4',
+      pointHoverBorderColor: '#fff',
+      pointHoverBorderWidth: 2,
+      tension: 0.35,
+      fill: false,
+      order: 2
+    },
     // Zero baseline (reference)
     {
       label: 'Zero',
@@ -3181,7 +3275,7 @@ function renderAllCharts(container, sessions) {
   // Hidden datasets in the legend
   const hiddenInLegend = new Set(['__peakAnchor', 'Drawdown', 'Zero']);
 
-  activeCharts.push(new Chart(container.querySelector('#ch-cum'), {
+  const cumChart = new Chart(container.querySelector('#ch-cum'), {
     type: 'line',
     data: { labels: cumLabels, datasets: cumDatasets },
     plugins: [crosshairPlugin],
@@ -3218,6 +3312,13 @@ function renderAllCharts(container, sessions) {
               const dd = ddPts[idx];
               if (dd < 0) lines.push(`Drawdown from peak: -€${Math.abs(dd).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
               else lines.push('At all-time high \u2713');
+              const evGap = (cumPts[idx] || 0) - (evPts[idx] || 0);
+              if (Math.abs(evGap) >= 0.01) {
+                const sign = evGap >= 0 ? '+' : '-';
+                lines.push(`vs EV: ${sign}€${Math.abs(evGap).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${evGap >= 0 ? 'running hot' : 'running cold'})`);
+              } else {
+                lines.push('On EV pace');
+              }
               if (hasHands) {
                 const handAcc = useWeeklyCum
                   ? weekly.slice(0, idx + 1).reduce((s, w) => s + (w.hands || 0), 0)
@@ -3243,7 +3344,31 @@ function renderAllCharts(container, sessions) {
         }
       }
     }
-  }));
+  });
+  activeCharts.push(cumChart);
+
+  // Wire up the three toggle checkboxes to show/hide the corresponding dataset(s)
+  const findDsIdx = (label) => cumChart.data.datasets.findIndex(d => d.label === label);
+  const setDsVisible = (label, visible) => {
+    const i = findDsIdx(label);
+    if (i >= 0) cumChart.setDatasetVisibility(i, visible);
+  };
+  const toggleEv    = container.querySelector('#cum-show-ev');
+  const toggleTrend = container.querySelector('#cum-show-trend');
+  const toggleDd    = container.querySelector('#cum-show-dd');
+  if (toggleEv) toggleEv.addEventListener('change', () => {
+    setDsVisible('Expected Value (smoothed)', toggleEv.checked);
+    cumChart.update();
+  });
+  if (toggleTrend) toggleTrend.addEventListener('change', () => {
+    setDsVisible('Linear Trend', toggleTrend.checked);
+    cumChart.update();
+  });
+  if (toggleDd) toggleDd.addEventListener('change', () => {
+    setDsVisible('Drawdown', toggleDd.checked);
+    setDsVisible('All-Time High', toggleDd.checked);
+    cumChart.update();
+  });
 
   // 2. Monthly
   const monthly = {};
