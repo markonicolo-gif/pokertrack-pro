@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-04-20T22:47:38.511Z",
+  "timestamp": "2026-04-21T00:19:24.559Z",
   "issues": 0,
   "recomputed": {
     "cash": {
@@ -9,16 +9,16 @@
       "rake": 0
     },
     "tournaments": {
-      "entries": 174,
+      "entries": 279,
       "hands": 6900,
-      "cash_entries": 15,
-      "cash_invested": 24,
-      "cash_won": 24.78,
-      "ticket_entries": 159,
-      "ticket_value": 6229.5,
-      "ticket_won": 3054.29,
-      "real_money_pnl": 3055.07,
-      "itm_count": 40
+      "cash_entries": 39,
+      "cash_invested": 374,
+      "cash_won": 717.34,
+      "ticket_entries": 240,
+      "ticket_value": 9439.5,
+      "ticket_won": 3820.54,
+      "real_money_pnl": 4163.88,
+      "itm_count": 62
     }
   },
   "duplicates": {

@@ -13,23 +13,44 @@ const { DOMParser } = require('xmldom');
 const DATA_DIR = path.join(__dirname, 'data');
 const HERO = 'platinex';
 
-// iPoker action types (from inspection):
-// 0 = fold
-// 1 = small blind (post)
-// 2 = big blind (post) / call
-// 3 = call / raise / bet
-// 4 = check
-// 5 = bet / raise
-// 6 = all-in
-// 7 = ante post
-// 8 = sit out
-// 9 = bet (big bet)
-// 15 = re-raise
-// We'll use: type 0 = fold; type 4 = check; types 3/5/9/15 = bet/raise; type 2 (round>0) = call
+// === iPoker XML action types (CONFIRMED via direct inspection of 330 hands across 5 zips) ===
+// Round 0 (blinds/posts only):
+//   1  = small blind post
+//   2  = big blind post
+//   15 = ante / dead-blind / sit-down post
+// Round 1 (preflop) and Round 2/3/4 (flop/turn/river):
+//   0  = fold
+//   3  = CALL  (always — never a bet/raise on any street)
+//   4  = check
+//   5  = BET   (opens action on a postflop street; preflop NEVER uses 5 because BB is "the bet")
+//   7  = ALL-IN (any street: preflop=jam, postflop=shove)
+//   23 = RAISE (over an existing bet — preflop opening raise IS type 23 because BB is "the bet")
+//
+// Critical: preflop, an "open raise" is type=23 (NOT type=5 as the old code assumed).
+// Postflop, "bet" = type=5 (no prior bet on street), "raise" = type=23 (over a prior bet).
+const PERIOD_CUTOFF_DATE = '2025-07-15';  // splits cash sessions into "good" (before) vs "bad" (>=)
 
 const parseAmt = (s) => parseFloat((s || '0').replace(/[^0-9.\-]/g, '')) || 0;
 
 function det(els, tag) { const e = els.getElementsByTagName(tag); return e.length ? (e[0].textContent || '').trim() : ''; }
+
+// Empty position-stat record used for both main aggregator and period sub-aggregators
+function makePosStat() {
+  return {hands:0,vpip:0,pfr:0,limp:0,three_bet:0,three_bet_opp:0,cold_call:0,cold_call_opp:0,fold_vs_raise:0,fold_vs_raise_opp:0,fold_to_3bet:0,fold_to_3bet_opp:0,call_3bet:0,four_bet:0,four_bet_opp:0,iso_raise:0,iso_opp:0,overlimp:0,overlimp_opp:0,squeeze:0,squeeze_opp:0,rfi:0,rfi_opp:0,open_sizes:[]};
+}
+function makePreAcc() {
+  return { BTN:makePosStat(), CO:makePosStat(), HJ:makePosStat(), UTG:makePosStat(), SB:makePosStat(), BB:makePosStat() };
+}
+function makePostAcc() {
+  return {
+    flop:  { saw:0, bets:0, raises:0, calls:0, folds:0, checks:0, cbet:0, cbet_opp:0, cbet_ip:0, cbet_opp_ip:0, cbet_oop:0, cbet_opp_oop:0, fold_to_cbet:0, fold_to_cbet_opp:0, xr:0, xr_opp:0, xc:0, xf:0, donk:0, donk_opp:0, probe:0, probe_opp:0, wtsd:0, wsd:0 },
+    turn:  { saw:0, bets:0, raises:0, calls:0, folds:0, checks:0, cbet:0, cbet_opp:0, fold_to_bet:0, faced_bet:0, xr:0, xr_opp:0, call_bet:0, raise_bet:0, probe:0, probe_opp:0 },
+    river: { saw:0, bets:0, raises:0, calls:0, folds:0, checks:0, fold_to_bet:0, faced_bet:0, call_bet:0, raise_bet:0, bet_first:0 }
+  };
+}
+function makePeriod(label) {
+  return { label, hands:0, pnl:0, sessions:0, rake:0, dates:[], pre: makePreAcc(), post: makePostAcc(), post_by_pos: {}, weekly: {}, by_stakes: {}, limp_count:0, limp_pnl_bb:0 };
+}
 
 // Aggregators (cash + tournament use same shape so parseHand works for both)
 function makeAcc() {
@@ -45,23 +66,20 @@ function makeAcc() {
   by_hour: {},           // 0-23 -> { p, h, s }
 
   // Preflop by position
-  pre: {
-    BTN:{hands:0,vpip:0,pfr:0,limp:0,three_bet:0,three_bet_opp:0,cold_call:0,cold_call_opp:0,fold_vs_raise:0,fold_vs_raise_opp:0,fold_to_3bet:0,fold_to_3bet_opp:0,call_3bet:0,four_bet:0,iso_raise:0,iso_opp:0,overlimp:0,overlimp_opp:0,squeeze:0,squeeze_opp:0,rfi:0,rfi_opp:0,open_sizes:[]},
-    CO:{hands:0,vpip:0,pfr:0,limp:0,three_bet:0,three_bet_opp:0,cold_call:0,cold_call_opp:0,fold_vs_raise:0,fold_vs_raise_opp:0,fold_to_3bet:0,fold_to_3bet_opp:0,call_3bet:0,four_bet:0,iso_raise:0,iso_opp:0,overlimp:0,overlimp_opp:0,squeeze:0,squeeze_opp:0,rfi:0,rfi_opp:0,open_sizes:[]},
-    HJ:{hands:0,vpip:0,pfr:0,limp:0,three_bet:0,three_bet_opp:0,cold_call:0,cold_call_opp:0,fold_vs_raise:0,fold_vs_raise_opp:0,fold_to_3bet:0,fold_to_3bet_opp:0,call_3bet:0,four_bet:0,iso_raise:0,iso_opp:0,overlimp:0,overlimp_opp:0,squeeze:0,squeeze_opp:0,rfi:0,rfi_opp:0,open_sizes:[]},
-    UTG:{hands:0,vpip:0,pfr:0,limp:0,three_bet:0,three_bet_opp:0,cold_call:0,cold_call_opp:0,fold_vs_raise:0,fold_vs_raise_opp:0,fold_to_3bet:0,fold_to_3bet_opp:0,call_3bet:0,four_bet:0,iso_raise:0,iso_opp:0,overlimp:0,overlimp_opp:0,squeeze:0,squeeze_opp:0,rfi:0,rfi_opp:0,open_sizes:[]},
-    SB:{hands:0,vpip:0,pfr:0,limp:0,three_bet:0,three_bet_opp:0,cold_call:0,cold_call_opp:0,fold_vs_raise:0,fold_vs_raise_opp:0,fold_to_3bet:0,fold_to_3bet_opp:0,call_3bet:0,four_bet:0,iso_raise:0,iso_opp:0,overlimp:0,overlimp_opp:0,squeeze:0,squeeze_opp:0,rfi:0,rfi_opp:0,open_sizes:[]},
-    BB:{hands:0,vpip:0,pfr:0,limp:0,three_bet:0,three_bet_opp:0,cold_call:0,cold_call_opp:0,fold_vs_raise:0,fold_vs_raise_opp:0,fold_to_3bet:0,fold_to_3bet_opp:0,call_3bet:0,four_bet:0,iso_raise:0,iso_opp:0,overlimp:0,overlimp_opp:0,squeeze:0,squeeze_opp:0,rfi:0,rfi_opp:0,open_sizes:[]}
-  },
+  pre: makePreAcc(),
   limp_pnl_bb: 0, limp_count: 0,
 
   // Postflop overall
-  post: {
-    flop:  { saw:0, bets:0, raises:0, calls:0, folds:0, checks:0, cbet:0, cbet_opp:0, cbet_ip:0, cbet_opp_ip:0, cbet_oop:0, cbet_opp_oop:0, fold_to_cbet:0, fold_to_cbet_opp:0, xr:0, xr_opp:0, xc:0, xf:0, donk:0, donk_opp:0, probe:0, probe_opp:0, wtsd:0, wsd:0 },
-    turn:  { saw:0, bets:0, raises:0, calls:0, folds:0, checks:0, cbet:0, cbet_opp:0, fold_to_bet:0, faced_bet:0, xr:0, xr_opp:0, call_bet:0, raise_bet:0, probe:0, probe_opp:0 },
-    river: { saw:0, bets:0, raises:0, calls:0, folds:0, checks:0, fold_to_bet:0, faced_bet:0, call_bet:0, raise_bet:0, bet_first:0 }
-  },
+  post: makePostAcc(),
   post_by_pos: {},  // pos -> { saw_flop, saw_turn, saw_river, cbet, cbet_opp, fold_to_cbet, fold_to_cbet_opp, wtsd, wsd }
+
+  // Period split (good vs bad) - only populated for cash agg
+  period_split: {
+    cutoff: PERIOD_CUTOFF_DATE,
+    good: makePeriod('good'),
+    bad:  makePeriod('bad')
+  },
+  hands_no_pos: 0,  // hands where dealer/seat could not be resolved
 
   // Opponents
   opps: {},  // name -> { hands, vpip, pfr, three_bet, three_bet_opp, vpip_opp, pfr_opp, af_b_r, af_c, cbet, cbet_opp, wtsd, wtsd_opp, hero_pnl }
@@ -99,19 +117,24 @@ function assignPositions(playersList, dealerSeat) {
   const dealerIdx = seats.indexOf(dealerSeat);
   if (dealerIdx === -1) return {};
   const n = seats.length;
-  // Order from dealer: BTN, SB, BB, UTG, MP/HJ, CO (then back to BTN)
-  // For 6-handed: BTN, SB, BB, UTG, HJ, CO
-  // For 5-handed: BTN, SB, BB, UTG, CO (no HJ)
-  // For 4-handed: BTN, SB, BB, UTG (or BTN, SB, BB, CO)
-  // For 3-handed: BTN, SB, BB
-  // For 2-handed (HU): BTN/SB, BB
+  // Order from dealer: BTN, SB, BB, then early→late positions
+  // Convention: shorter tables drop EARLY positions first (UTG, then HJ).
+  //   6-handed: BTN, SB, BB, UTG, HJ, CO   ← classic
+  //   5-handed: BTN, SB, BB, HJ, CO        ← UTG dropped (early-pos role merges into HJ)
+  //   4-handed: BTN, SB, BB, CO            ← UTG and HJ both dropped
+  //   3-handed: BTN, SB, BB
+  //   2-handed (HU): BTN/SB, BB
   let posNames;
-  if (n === 6) posNames = ['BTN','SB','BB','UTG','HJ','CO'];
-  else if (n === 5) posNames = ['BTN','SB','BB','UTG','CO'];
-  else if (n === 4) posNames = ['BTN','SB','BB','UTG'];
+  if (n >= 6) posNames = ['BTN','SB','BB','UTG','HJ','CO'];
+  else if (n === 5) posNames = ['BTN','SB','BB','HJ','CO'];
+  else if (n === 4) posNames = ['BTN','SB','BB','CO'];
   else if (n === 3) posNames = ['BTN','SB','BB'];
   else if (n === 2) posNames = ['BTN','BB']; // BTN is also SB heads-up
   else return {};
+
+  // For tables larger than 6 (rare on iPoker PLO 6-max but defensive),
+  // pad with extra UTG slots so we don't drop the hand entirely.
+  while (posNames.length < n) posNames.splice(3, 0, 'UTG');
 
   const seatToPos = {};
   for (let i = 0; i < n; i++) {
@@ -291,6 +314,10 @@ async function parseSession(text) {
 
   const sessionPnl = sWins - sBets;
 
+  // === Period assignment (good vs bad) based on session date ===
+  const sessionDateStr = date.toISOString().slice(0,10); // YYYY-MM-DD
+  const period = sessionDateStr < PERIOD_CUTOFF_DATE ? agg.period_split.good : agg.period_split.bad;
+
   // Aggregate session-level
   agg.total_sessions++;
   agg.total_pnl += sessionPnl;
@@ -305,19 +332,29 @@ async function parseSession(text) {
   agg.by_hour[hour] = agg.by_hour[hour] || { p:0, h:0, s:0 };
   agg.by_hour[hour].p += sessionPnl; agg.by_hour[hour].h += games.length; agg.by_hour[hour].s++;
 
+  // Period totals
+  period.sessions++;
+  period.hands += games.length;
+  period.pnl += sessionPnl;
+  period.dates.push(sessionDateStr);
+  period.by_stakes[stakesKey] = period.by_stakes[stakesKey] || { hands:0, pnl:0, sessions:0 };
+  period.by_stakes[stakesKey].hands += games.length; period.by_stakes[stakesKey].pnl += sessionPnl; period.by_stakes[stakesKey].sessions++;
+
   // Weekly bucket (Monday)
   const weekStart = new Date(date); const day = weekStart.getDay(); const diff = day === 0 ? -6 : 1 - day; weekStart.setDate(weekStart.getDate() + diff);
   const wkKey = weekStart.toISOString().slice(0,10);
   agg.weekly[wkKey] = agg.weekly[wkKey] || { hands:0, pnl:0 };
   agg.weekly[wkKey].hands += games.length; agg.weekly[wkKey].pnl += sessionPnl;
+  period.weekly[wkKey] = period.weekly[wkKey] || { hands:0, pnl:0 };
+  period.weekly[wkKey].hands += games.length; period.weekly[wkKey].pnl += sessionPnl;
 
-  // Per-hand parsing
+  // Per-hand parsing — pass period sub-aggregator so VPIP/PFR etc. are tracked per period too
   for (let g = 0; g < games.length; g++) {
-    parseHand(games[g], bbSize, agg);
+    parseHand(games[g], bbSize, agg, period);
   }
 }
 
-function parseHand(gameEl, bbSize, agg) {
+function parseHand(gameEl, bbSize, agg, periodAgg) {
   // Extract players & dealer
   const playersEls = gameEl.getElementsByTagName('player');
   const playersList = [];
@@ -335,14 +372,15 @@ function parseHand(gameEl, bbSize, agg) {
     }
   }
   agg.total_rake += heroRake;
-  if (dealerSeat === -1) return;
+  if (dealerSeat === -1) { agg.hands_no_pos = (agg.hands_no_pos||0) + 1; return; }
 
   const seatToPos = assignPositions(playersList, dealerSeat);
   const heroSeat = playersList.find(p => p.name === HERO)?.seat;
   const heroPos = seatToPos[heroSeat];
-  if (!heroPos || !agg.pre[heroPos]) return;
+  if (!heroPos || !agg.pre[heroPos]) { agg.hands_no_pos = (agg.hands_no_pos||0) + 1; return; }
 
   agg.pre[heroPos].hands++;
+  if (periodAgg && periodAgg.pre[heroPos]) periodAgg.pre[heroPos].hands++;
 
   // Get hero's pocket cards for hand quality
   const cardsEls = gameEl.getElementsByTagName('cards');
@@ -374,123 +412,120 @@ function parseHand(gameEl, bbSize, agg) {
   }
 
   // === PREFLOP ANALYSIS ===
-  const preflop = roundActions[1] || roundActions[0] || [];
-  // Determine if hero VPIP'd (any non-fold/non-check action by hero)
-  // and PFR'd (any raise: type 3 with sum > BB or type 5)
-  let heroVPIP = false, heroPFR = false, heroLimped = false, heroFolded = false;
-  let heroRaised = false; let heroRaiseSize = 0;
-  let openRaiseSeen = false;  // first voluntary raise opened the pot
-  let limpsBeforeHero = 0, raisesBeforeHero = 0, callersBeforeHero = 0;
-  let heroFacedRaise = false; // before hero's first action there was a raise
-  let openRaiserName = null;
-  let raiseCount = 0; // 1 = open, 2 = 3-bet, 3 = 4-bet
-  let heroAction = null;
+  // Action types in iPoker preflop:
+  //   0 = fold | 3 = call (any size — limp or call vs raise) | 4 = check (BB option) |
+  //   23 = raise | 7 = all-in | 1/2/15 = blind/ante posts (skip)
+  const preflop = roundActions[1] || [];
+  const PRE_RAISE = (t) => (t === '23' || t === '7');  // raise or all-in
+  const PRE_CALL  = (t) => (t === '3');                 // call (limp or vs raise)
+  const PRE_CHECK = (t) => (t === '4');
+  const PRE_FOLD  = (t) => (t === '0');
+  const PRE_VOL   = (t) => PRE_CALL(t) || PRE_RAISE(t); // any voluntary money in
 
-  // Process preflop actions in order
+  let heroVPIP = false, heroPFR = false, heroLimped = false, heroFolded = false;
+  let heroRaiseSize = 0;
+  let limpsBeforeHero = 0, raisesBeforeHero = 0, callersBeforeHero = 0;
+  let heroFacedRaise = false;
+  let raiseCount = 0; // 1 = open, 2 = 3-bet, 3 = 4-bet
   let firstHeroIdx = -1;
+
   for (let i = 0; i < preflop.length; i++) {
     const ac = preflop[i];
+    const t = ac.type;
     if (ac.player === HERO) {
       if (firstHeroIdx === -1) firstHeroIdx = i;
-      // hero's actions
-      const t = ac.type;
-      if (t === '0') heroFolded = true;
-      else if (t === '4') { /* check */ }
-      else if (t === '3') {
-        // call or raise — distinguish by sum vs current bet
-        // If raiseCount === 0, this might be a limp (sum ≈ BB)
+      if (PRE_FOLD(t))       heroFolded = true;
+      else if (PRE_CHECK(t)) { /* BB option */ }
+      else if (PRE_CALL(t)) {
         heroVPIP = true;
-        if (ac.sum > bbSize * 1.5) {
-          heroPFR = true; heroRaised = true; heroRaiseSize = ac.sum;
-          raiseCount++;
-        } else {
-          heroLimped = true;
-        }
-      } else if (t === '5') {
-        heroVPIP = true; heroPFR = true; heroRaised = true; heroRaiseSize = ac.sum; raiseCount++;
-      } else if (t === '2') {
-        // call
-        heroVPIP = true;
+        if (raiseCount === 0) heroLimped = true;  // call before any raise = limp
+      } else if (PRE_RAISE(t)) {
+        heroVPIP = true; heroPFR = true;
+        heroRaiseSize = ac.sum;
+        raiseCount++;
       }
-      heroAction = t;
     } else {
-      // opponent's preflop action before hero acts
       if (firstHeroIdx === -1) {
-        if (ac.type === '3' && ac.sum > bbSize * 1.5) { raisesBeforeHero++; raiseCount = 1; openRaiserName = ac.player; }
-        else if (ac.type === '5') { raisesBeforeHero++; raiseCount = 1; openRaiserName = ac.player; }
-        else if (ac.type === '3') { limpsBeforeHero++; } // limp
-        else if (ac.type === '2') { /* posting blind in round 0 */ }
-      } else {
-        // After hero acts, opponent can 3-bet → check if hero faces 3-bet
-        if (heroPFR && (ac.type === '3' && ac.sum > heroRaiseSize) || ac.type === '5') {
-          // hero opened, opponent 3-bet
-          // We track this below
+        // Opponent action BEFORE hero acts
+        if (PRE_RAISE(t))      { raisesBeforeHero++; raiseCount = 1; }
+        else if (PRE_CALL(t)) {
+          if (raisesBeforeHero === 0) limpsBeforeHero++;
+          else                        callersBeforeHero++; // cold-caller of an open
         }
+      } else {
+        // Opponent action AFTER hero — track raise count for fold-to-3bet detection
+        if (PRE_RAISE(t)) raiseCount++;
       }
     }
   }
   if (raisesBeforeHero > 0) heroFacedRaise = true;
 
-  // === Position-specific aggregates ===
-  const posAgg = agg.pre[heroPos];
-  if (heroVPIP) posAgg.vpip++;
-  if (heroPFR) posAgg.pfr++;
-  if (heroLimped) { posAgg.limp++; agg.limp_count++; agg.limp_pnl_bb += heroNet / bbSize; }
+  // === Position-specific aggregates (mirror to periodAgg if present) ===
+  const posAgg  = agg.pre[heroPos];
+  const posAggP = periodAgg ? periodAgg.pre[heroPos] : null;
+  const bumpPos = (k, n=1) => { posAgg[k] += n; if (posAggP) posAggP[k] += n; };
 
-  // RFI: hero opens (raises) when no one has voluntarily put money in (no limpers/raisers before)
-  // Excludes BB (they get to "check" not raise as RFI typical metric)
+  if (heroVPIP) bumpPos('vpip');
+  if (heroPFR)  bumpPos('pfr');
+  if (heroLimped) {
+    bumpPos('limp');
+    agg.limp_count++; agg.limp_pnl_bb += heroNet / bbSize;
+    if (periodAgg) { periodAgg.limp_count++; periodAgg.limp_pnl_bb += heroNet / bbSize; }
+  }
+
+  // RFI: hero opens (raises) when no one has voluntarily put money in
+  // (excludes BB — BB doesn't "open" in the conventional sense)
   if (heroPos !== 'BB') {
     if (limpsBeforeHero === 0 && raisesBeforeHero === 0) {
-      posAgg.rfi_opp++;
+      bumpPos('rfi_opp');
       if (heroPFR && raiseCount === 1) {
-        posAgg.rfi++;
+        bumpPos('rfi');
         posAgg.open_sizes.push(heroRaiseSize / bbSize);
+        if (posAggP) posAggP.open_sizes.push(heroRaiseSize / bbSize);
       }
     }
   }
 
   // 3-bet opportunity: faced an open-raise before acting
   if (heroFacedRaise && raisesBeforeHero === 1) {
-    posAgg.three_bet_opp++;
-    if (heroPFR) posAgg.three_bet++;
-    // cold call: facing a raise, no money invested yet (not BB)
+    bumpPos('three_bet_opp');
+    if (heroPFR) bumpPos('three_bet');
+    // cold call: facing a raise, no money in pot yet (excludes blinds)
     if (heroPos !== 'SB' && heroPos !== 'BB') {
-      posAgg.cold_call_opp++;
-      if (heroVPIP && !heroPFR) posAgg.cold_call++;
+      bumpPos('cold_call_opp');
+      if (heroVPIP && !heroPFR) bumpPos('cold_call');
     }
-    // fold vs raise
-    posAgg.fold_vs_raise_opp++;
-    if (heroFolded) posAgg.fold_vs_raise++;
+    // fold vs raise (separate metric)
+    bumpPos('fold_vs_raise_opp');
+    if (heroFolded) bumpPos('fold_vs_raise');
   }
-  // squeeze: faced raise + ≥1 caller
+  // squeeze: faced raise + ≥1 cold-caller
   if (heroFacedRaise && raisesBeforeHero === 1 && callersBeforeHero >= 1) {
-    posAgg.squeeze_opp++;
-    if (heroPFR) posAgg.squeeze++;
+    bumpPos('squeeze_opp');
+    if (heroPFR) bumpPos('squeeze');
   }
-  // iso raise: faced limp(s) only (no raise), hero raises
-  if (raisesBeforeHero === 0 && limpsBeforeHero >= 1) {
-    posAgg.iso_opp++;
-    if (heroPFR) posAgg.iso_raise++;
-    if (heroVPIP && !heroPFR) posAgg.overlimp++;
-    posAgg.overlimp_opp++;
+  // iso raise / overlimp: faced limp(s) only (no raise yet)
+  if (raisesBeforeHero === 0 && limpsBeforeHero >= 1 && heroPos !== 'BB') {
+    bumpPos('iso_opp');
+    bumpPos('overlimp_opp');
+    if (heroPFR) bumpPos('iso_raise');
+    if (heroVPIP && !heroPFR) bumpPos('overlimp');
   }
-  // Fold to 3-bet: hero opened, faced a 3-bet
+  // Fold to 3-bet: hero opened, faced a 3-bet (raise after hero's open)
   if (heroPFR && raiseCount >= 2) {
-    // detect if 3-bet came after hero's open
     let saw3bet = false, hero3betAct = null;
     for (let i = firstHeroIdx + 1; i < preflop.length; i++) {
       const ac = preflop[i];
       if (ac.player !== HERO) {
-        if ((ac.type === '3' && ac.sum > heroRaiseSize) || ac.type === '5') saw3bet = true;
+        if (PRE_RAISE(ac.type)) saw3bet = true;
       } else if (saw3bet) { hero3betAct = ac.type; break; }
     }
     if (saw3bet) {
-      posAgg.fold_to_3bet_opp++;
-      if (hero3betAct === '0') posAgg.fold_to_3bet++;
-      if (hero3betAct === '2' || hero3betAct === '3') posAgg.call_3bet++;
-      if (hero3betAct === '5' || (hero3betAct === '3' && hero3betAct !== '0')) {
-        // 4-bet
-      }
+      bumpPos('fold_to_3bet_opp');
+      bumpPos('four_bet_opp');
+      if (hero3betAct && PRE_FOLD(hero3betAct)) bumpPos('fold_to_3bet');
+      if (hero3betAct && PRE_CALL(hero3betAct)) bumpPos('call_3bet');
+      if (hero3betAct && PRE_RAISE(hero3betAct)) bumpPos('four_bet');
     }
   }
 
@@ -501,97 +536,100 @@ function parseHand(gameEl, bbSize, agg) {
   }
 
   // === POSTFLOP ANALYSIS ===
+  // Action types in iPoker postflop:
+  //   0 = fold | 3 = call | 4 = check | 5 = BET (no prior bet on street) |
+  //   23 = RAISE (over a prior bet) | 7 = all-in (bet or raise depending on prior action)
+  const POST_BET   = (t) => (t === '5');
+  const POST_RAISE = (t) => (t === '23');
+  const POST_CALL  = (t) => (t === '3');
+  const POST_CHECK = (t) => (t === '4');
+  const POST_FOLD  = (t) => (t === '0');
+  const POST_ALLIN = (t) => (t === '7');
+  const POST_AGG   = (t) => POST_BET(t) || POST_RAISE(t) || POST_ALLIN(t);  // any aggressive action
+
   // Did hero see flop / turn / river?
   const sawFlop = !heroFolded && (roundActions[2] && roundActions[2].length > 0);
   const sawTurn = !heroFolded && (roundActions[3] && roundActions[3].length > 0);
   const sawRiver = !heroFolded && (roundActions[4] && roundActions[4].length > 0);
 
-  // Was hero PFR? Then he's "the aggressor" for c-bet purposes
-  agg.post_by_pos[heroPos] = agg.post_by_pos[heroPos] || { saw_flop:0, saw_turn:0, saw_river:0, cbet:0, cbet_opp:0, fold_to_cbet:0, fold_to_cbet_opp:0, wtsd:0, wsd:0 };
+  // Init by-position postflop accumulator
+  const initBP = (target) => { target[heroPos] = target[heroPos] || { saw_flop:0, saw_turn:0, saw_river:0, cbet:0, cbet_opp:0, fold_to_cbet:0, fold_to_cbet_opp:0, wtsd:0, wsd:0 }; };
+  initBP(agg.post_by_pos);
+  if (periodAgg) initBP(periodAgg.post_by_pos);
 
-  // In PLO heads-up to flop with hero IP/OOP
-  // IP = hero acted last preflop (BTN/CO usually); OOP otherwise
+  const bumpFlop  = (k, n=1) => { agg.post.flop[k]  += n; if (periodAgg) periodAgg.post.flop[k]  += n; };
+  const bumpTurn  = (k, n=1) => { agg.post.turn[k]  += n; if (periodAgg) periodAgg.post.turn[k]  += n; };
+  const bumpRiver = (k, n=1) => { agg.post.river[k] += n; if (periodAgg) periodAgg.post.river[k] += n; };
+  const bumpBP    = (k, n=1) => { agg.post_by_pos[heroPos][k] += n; if (periodAgg) periodAgg.post_by_pos[heroPos][k] += n; };
+
+  // IP = hero acted last preflop (BTN typically, CO if no raise from BTN)
   const isIP = heroPos === 'BTN' || (heroPos === 'CO' && raisesBeforeHero === 0);
 
-  // FLOP
+  // === FLOP ===
   if (sawFlop) {
-    agg.post.flop.saw++;
-    agg.post_by_pos[heroPos].saw_flop++;
+    bumpFlop('saw'); bumpBP('saw_flop');
     const flopActs = roundActions[2];
     let heroFoldedFlop = false, heroBetFlop = false, heroCheckedFlop = false, heroRaisedFlop = false, heroCalledFlop = false;
-    let heroFirstActFlop = null, faceCbet = false, oppBetFirst = false;
-    let heroIdxFlop = -1;
+    let oppBetFirst = false; let heroIdxFlop = -1;
     for (let i = 0; i < flopActs.length; i++) {
-      if (flopActs[i].player === HERO) {
+      const ac = flopActs[i];
+      if (ac.player === HERO) {
         if (heroIdxFlop === -1) heroIdxFlop = i;
-        if (heroFirstActFlop === null) heroFirstActFlop = flopActs[i].type;
-        if (flopActs[i].type === '0') heroFoldedFlop = true;
-        if (flopActs[i].type === '4') heroCheckedFlop = true;
-        if (flopActs[i].type === '3' || flopActs[i].type === '5') {
-          // bet or raise
-          // Check if there was a bet before — if so, it's a raise, otherwise bet
-          let betBefore = false;
-          for (let j = 0; j < i; j++) { if ((flopActs[j].type === '3' || flopActs[j].type === '5') && flopActs[j].sum > 0) { betBefore = true; break; } }
-          if (betBefore) heroRaisedFlop = true; else heroBetFlop = true;
+        if (POST_FOLD(ac.type))  heroFoldedFlop  = true;
+        if (POST_CHECK(ac.type)) heroCheckedFlop = true;
+        if (POST_CALL(ac.type))  heroCalledFlop  = true;
+        if (POST_AGG(ac.type)) {
+          // Determine if this was a bet (no prior agg on street) or a raise (over prior agg)
+          let aggBefore = false;
+          for (let j = 0; j < i; j++) if (POST_AGG(flopActs[j].type) && flopActs[j].sum > 0) { aggBefore = true; break; }
+          if (aggBefore || POST_RAISE(ac.type)) heroRaisedFlop = true;
+          else                                  heroBetFlop = true;
         }
-        if (flopActs[i].type === '2') heroCalledFlop = true;
-      } else if (heroIdxFlop === -1 && (flopActs[i].type === '3' || flopActs[i].type === '5') && flopActs[i].sum > 0) {
+      } else if (heroIdxFlop === -1 && POST_AGG(ac.type) && ac.sum > 0) {
         oppBetFirst = true;
       }
     }
-    if (heroBetFlop) agg.post.flop.bets++;
-    if (heroRaisedFlop) agg.post.flop.raises++;
-    if (heroCalledFlop) agg.post.flop.calls++;
-    if (heroFoldedFlop) agg.post.flop.folds++;
-    if (heroCheckedFlop) agg.post.flop.checks++;
+    if (heroBetFlop)     bumpFlop('bets');
+    if (heroRaisedFlop)  bumpFlop('raises');
+    if (heroCalledFlop)  bumpFlop('calls');
+    if (heroFoldedFlop)  bumpFlop('folds');
+    if (heroCheckedFlop) bumpFlop('checks');
 
-    // C-bet: hero was PFR and bet flop on first action (and was either first to act, or it checked to him)
+    // C-bet: hero was PFR, has opportunity (any flop seen as PFR), bet on first action without opp betting first
     if (heroPFR) {
-      agg.post.flop.cbet_opp++;
-      agg.post_by_pos[heroPos].cbet_opp++;
-      if (isIP) agg.post.flop.cbet_opp_ip++; else agg.post.flop.cbet_opp_oop++;
+      bumpFlop('cbet_opp'); bumpBP('cbet_opp');
+      if (isIP) bumpFlop('cbet_opp_ip'); else bumpFlop('cbet_opp_oop');
       if (heroBetFlop && !oppBetFirst) {
-        agg.post.flop.cbet++;
-        agg.post_by_pos[heroPos].cbet++;
-        if (isIP) agg.post.flop.cbet_ip++; else agg.post.flop.cbet_oop++;
+        bumpFlop('cbet'); bumpBP('cbet');
+        if (isIP) bumpFlop('cbet_ip'); else bumpFlop('cbet_oop');
       }
     }
-
-    // Fold to c-bet: hero NOT PFR, faced a c-bet from PFR
+    // Fold to c-bet: hero NOT PFR, faced an opponent bet
     if (!heroPFR && heroVPIP && oppBetFirst) {
-      agg.post.flop.fold_to_cbet_opp++;
-      agg.post_by_pos[heroPos].fold_to_cbet_opp++;
-      if (heroFoldedFlop) {
-        agg.post.flop.fold_to_cbet++;
-        agg.post_by_pos[heroPos].fold_to_cbet++;
-      }
+      bumpFlop('fold_to_cbet_opp'); bumpBP('fold_to_cbet_opp');
+      if (heroFoldedFlop) { bumpFlop('fold_to_cbet'); bumpBP('fold_to_cbet'); }
     }
-
-    // Check-raise / check-call / check-fold
+    // Check-raise / check-call / check-fold (only when hero checked at least once)
     if (heroCheckedFlop) {
-      agg.post.flop.xr_opp++;
-      if (heroRaisedFlop) agg.post.flop.xr++;
-      else if (heroCalledFlop) agg.post.flop.xc++;
-      else if (heroFoldedFlop) agg.post.flop.xf++;
+      bumpFlop('xr_opp');
+      if (heroRaisedFlop)      bumpFlop('xr');
+      else if (heroCalledFlop) bumpFlop('xc');
+      else if (heroFoldedFlop) bumpFlop('xf');
     }
-
-    // Donk: hero NOT PFR, hero bet first OOP
-    if (!heroPFR && heroVPIP && !isIP && heroBetFlop && heroIdxFlop === 0) {
-      agg.post.flop.donk++;
+    // Donk: hero NOT PFR, OOP, bet first
+    if (!heroPFR && heroVPIP && !isIP) {
+      bumpFlop('donk_opp');
+      if (heroBetFlop && heroIdxFlop === 0) bumpFlop('donk');
     }
-    if (!heroPFR && heroVPIP && !isIP) agg.post.flop.donk_opp++;
 
     // WTSD / WSD
     if (sawRiver) {
-      // Reached river — see if went to showdown (river round had bet+call or check-check)
       const riverActs = roundActions[4] || [];
-      let heroReachedSD = !heroFoldedFlop;
-      // Check if hero folded turn/river
       const turnActs = roundActions[3] || [];
-      for (let i = 0; i < turnActs.length; i++) { if (turnActs[i].player === HERO && turnActs[i].type === '0') { heroReachedSD = false; break; } }
-      for (let i = 0; i < riverActs.length; i++) { if (riverActs[i].player === HERO && riverActs[i].type === '0') { heroReachedSD = false; break; } }
+      let heroReachedSD = !heroFoldedFlop;
+      for (let i = 0; i < turnActs.length; i++)  if (turnActs[i].player === HERO  && POST_FOLD(turnActs[i].type))  { heroReachedSD = false; break; }
+      for (let i = 0; i < riverActs.length; i++) if (riverActs[i].player === HERO && POST_FOLD(riverActs[i].type)) { heroReachedSD = false; break; }
       if (heroReachedSD) {
-        // Did opponent reveal cards? (real showdown)
         let oppReveal = false;
         for (let c = 0; c < cardsEls.length; c++) {
           if (cardsEls[c].getAttribute('type') !== 'Pocket') continue;
@@ -600,106 +638,110 @@ function parseHand(gameEl, bbSize, agg) {
           if (txt && !txt.startsWith('X')) { oppReveal = true; break; }
         }
         if (oppReveal) {
-          agg.post.flop.wtsd++;
-          agg.post_by_pos[heroPos].wtsd++;
-          if (heroNet > 0) { agg.post.flop.wsd++; agg.post_by_pos[heroPos].wsd++; }
+          bumpFlop('wtsd'); bumpBP('wtsd');
+          if (heroNet > 0) { bumpFlop('wsd'); bumpBP('wsd'); }
         }
       }
     }
   }
 
-  // TURN (similar but simpler)
+  // === TURN ===
   if (sawTurn) {
-    agg.post.turn.saw++;
-    agg.post_by_pos[heroPos].saw_turn++;
+    bumpTurn('saw'); bumpBP('saw_turn');
     const turnActs = roundActions[3];
     let heroBetTurn = false, heroCheckedTurn = false, heroFoldedTurn = false, heroCalledTurn = false, heroRaisedTurn = false;
     let oppBetFirstTurn = false; let heroIdxTurn = -1;
     for (let i = 0; i < turnActs.length; i++) {
-      if (turnActs[i].player === HERO) {
+      const ac = turnActs[i];
+      if (ac.player === HERO) {
         if (heroIdxTurn === -1) heroIdxTurn = i;
-        if (turnActs[i].type === '4') heroCheckedTurn = true;
-        if (turnActs[i].type === '0') heroFoldedTurn = true;
-        if (turnActs[i].type === '2') heroCalledTurn = true;
-        if (turnActs[i].type === '3' || turnActs[i].type === '5') {
-          let betBefore = false;
-          for (let j = 0; j < i; j++) if ((turnActs[j].type === '3' || turnActs[j].type === '5') && turnActs[j].sum > 0) betBefore = true;
-          if (betBefore) heroRaisedTurn = true; else heroBetTurn = true;
+        if (POST_CHECK(ac.type)) heroCheckedTurn = true;
+        if (POST_FOLD(ac.type))  heroFoldedTurn  = true;
+        if (POST_CALL(ac.type))  heroCalledTurn  = true;
+        if (POST_AGG(ac.type)) {
+          let aggBefore = false;
+          for (let j = 0; j < i; j++) if (POST_AGG(turnActs[j].type) && turnActs[j].sum > 0) { aggBefore = true; break; }
+          if (aggBefore || POST_RAISE(ac.type)) heroRaisedTurn = true;
+          else                                  heroBetTurn = true;
         }
-      } else if (heroIdxTurn === -1 && (turnActs[i].type === '3' || turnActs[i].type === '5') && turnActs[i].sum > 0) {
+      } else if (heroIdxTurn === -1 && POST_AGG(ac.type) && ac.sum > 0) {
         oppBetFirstTurn = true;
       }
     }
-    if (heroBetTurn) agg.post.turn.bets++;
-    if (heroRaisedTurn) agg.post.turn.raises++;
-    if (heroCalledTurn) agg.post.turn.calls++;
-    if (heroFoldedTurn) agg.post.turn.folds++;
-    if (heroCheckedTurn) agg.post.turn.checks++;
+    if (heroBetTurn)     bumpTurn('bets');
+    if (heroRaisedTurn)  bumpTurn('raises');
+    if (heroCalledTurn)  bumpTurn('calls');
+    if (heroFoldedTurn)  bumpTurn('folds');
+    if (heroCheckedTurn) bumpTurn('checks');
     if (oppBetFirstTurn) {
-      agg.post.turn.faced_bet++;
-      if (heroFoldedTurn) agg.post.turn.fold_to_bet++;
-      if (heroCalledTurn) agg.post.turn.call_bet++;
-      if (heroRaisedTurn) agg.post.turn.raise_bet++;
+      bumpTurn('faced_bet');
+      if (heroFoldedTurn) bumpTurn('fold_to_bet');
+      if (heroCalledTurn) bumpTurn('call_bet');
+      if (heroRaisedTurn) bumpTurn('raise_bet');
     }
   }
 
-  // RIVER
+  // === RIVER ===
   if (sawRiver) {
-    agg.post.river.saw++;
-    agg.post_by_pos[heroPos].saw_river++;
+    bumpRiver('saw'); bumpBP('saw_river');
     const rivActs = roundActions[4];
     let heroBetRiv = false, heroFoldedRiv = false, heroCalledRiv = false, heroRaisedRiv = false;
+    let heroCheckedRiv = false;
     let oppBetFirstRiv = false; let heroIdxRiv = -1; let heroBetFirstRiv = false;
     for (let i = 0; i < rivActs.length; i++) {
-      if (rivActs[i].player === HERO) {
+      const ac = rivActs[i];
+      if (ac.player === HERO) {
         if (heroIdxRiv === -1) heroIdxRiv = i;
-        if (rivActs[i].type === '0') heroFoldedRiv = true;
-        if (rivActs[i].type === '2') heroCalledRiv = true;
-        if (rivActs[i].type === '3' || rivActs[i].type === '5') {
-          let betBefore = false;
-          for (let j = 0; j < i; j++) if ((rivActs[j].type === '3' || rivActs[j].type === '5') && rivActs[j].sum > 0) betBefore = true;
-          if (betBefore) heroRaisedRiv = true; else { heroBetRiv = true; if (i === 0 || (i > 0 && !oppBetFirstRiv)) heroBetFirstRiv = true; }
+        if (POST_FOLD(ac.type))  heroFoldedRiv  = true;
+        if (POST_CHECK(ac.type)) heroCheckedRiv = true;
+        if (POST_CALL(ac.type))  heroCalledRiv  = true;
+        if (POST_AGG(ac.type)) {
+          let aggBefore = false;
+          for (let j = 0; j < i; j++) if (POST_AGG(rivActs[j].type) && rivActs[j].sum > 0) aggBefore = true;
+          if (aggBefore || POST_RAISE(ac.type)) heroRaisedRiv = true;
+          else { heroBetRiv = true; if (!oppBetFirstRiv) heroBetFirstRiv = true; }
         }
-      } else if (heroIdxRiv === -1 && (rivActs[i].type === '3' || rivActs[i].type === '5') && rivActs[i].sum > 0) {
+      } else if (heroIdxRiv === -1 && POST_AGG(ac.type) && ac.sum > 0) {
         oppBetFirstRiv = true;
       }
     }
-    if (heroBetRiv) agg.post.river.bets++;
-    if (heroBetFirstRiv) agg.post.river.bet_first++;
-    if (heroRaisedRiv) agg.post.river.raises++;
-    if (heroCalledRiv) agg.post.river.calls++;
-    if (heroFoldedRiv) agg.post.river.folds++;
+    if (heroBetRiv)      bumpRiver('bets');
+    if (heroBetFirstRiv) bumpRiver('bet_first');
+    if (heroRaisedRiv)   bumpRiver('raises');
+    if (heroCalledRiv)   bumpRiver('calls');
+    if (heroFoldedRiv)   bumpRiver('folds');
+    if (heroCheckedRiv)  bumpRiver('checks');
     if (oppBetFirstRiv) {
-      agg.post.river.faced_bet++;
-      if (heroFoldedRiv) agg.post.river.fold_to_bet++;
-      if (heroCalledRiv) agg.post.river.call_bet++;
-      if (heroRaisedRiv) agg.post.river.raise_bet++;
+      bumpRiver('faced_bet');
+      if (heroFoldedRiv) bumpRiver('fold_to_bet');
+      if (heroCalledRiv) bumpRiver('call_bet');
+      if (heroRaisedRiv) bumpRiver('raise_bet');
     }
   }
 
-  // === OPPONENT TRACKING ===
+  // === OPPONENT TRACKING (uses corrected action types) ===
   for (const p of playersList) {
     if (p.name === HERO) continue;
     const o = agg.opps[p.name] = agg.opps[p.name] || { hands:0, vpip:0, vpip_opp:0, pfr:0, pfr_opp:0, three_bet:0, three_bet_opp:0, af_b_r:0, af_c:0, hero_pnl_bb:0, hero_pnl_eur:0 };
     o.hands++;
-    if (p.name === HERO) continue;
-    // Track opponent VPIP/PFR from their preflop actions
+    // Opponent VPIP/PFR from preflop actions (corrected: type 3 = call, type 23/7 = raise)
     let oVPIP = false, oPFR = false;
     const pf = roundActions[1] || [];
     for (let i = 0; i < pf.length; i++) {
       if (pf[i].player !== p.name) continue;
-      if (pf[i].type === '2' || pf[i].type === '3' || pf[i].type === '5') oVPIP = true;
-      if (pf[i].type === '5' || (pf[i].type === '3' && pf[i].sum > 0)) oPFR = true;
+      const t = pf[i].type;
+      if (PRE_CALL(t) || PRE_RAISE(t)) oVPIP = true;
+      if (PRE_RAISE(t))                oPFR  = true;
     }
     o.vpip_opp++; if (oVPIP) o.vpip++;
-    o.pfr_opp++; if (oPFR) o.pfr++;
-    // Postflop AF for opponent
+    o.pfr_opp++;  if (oPFR)  o.pfr++;
+    // Postflop AF for opponent (bets+raises / calls)
     for (let r = 2; r <= 4; r++) {
       const ra = roundActions[r] || [];
       for (let i = 0; i < ra.length; i++) {
         if (ra[i].player !== p.name) continue;
-        if (ra[i].type === '3' || ra[i].type === '5') o.af_b_r++;
-        if (ra[i].type === '2') o.af_c++;
+        if (POST_AGG(ra[i].type))  o.af_b_r++;
+        if (POST_CALL(ra[i].type)) o.af_c++;
       }
     }
   }
@@ -852,7 +894,7 @@ async function main() {
       fold_vs_raise: pct(a.fold_vs_raise, a.fold_vs_raise_opp),
       fold_to_3bet: pct(a.fold_to_3bet, a.fold_to_3bet_opp),
       call_3bet: pct(a.call_3bet, a.fold_to_3bet_opp),
-      four_bet: 0,
+      four_bet: pct(a.four_bet, a.four_bet_opp),
       iso_raise: pct(a.iso_raise, a.iso_opp),
       overlimp: pct(a.overlimp, a.overlimp_opp),
       squeeze: pct(a.squeeze, a.squeeze_opp)
@@ -1035,6 +1077,102 @@ async function main() {
   if (postComp.flop.wtsd_pct >= 28 && postComp.flop.wtsd_pct <= 35) strengths.push(`WTSD ${postComp.flop.wtsd_pct}% in GTO range`);
   if (postComp.flop.wsd_pct >= 50) strengths.push(`W$SD ${postComp.flop.wsd_pct}% solid`);
 
+  // ====== PERIOD COMPARISON (Good vs Bad split at PERIOD_CUTOFF_DATE) ======
+  function computePeriodSnapshot(P) {
+    if (!P || P.hands === 0) {
+      return { dates: 'N/A', pnl_eur: 0, hands: 0, bb_per_100: 0, sessions: 0, stats: null };
+    }
+    const datesSorted = [...P.dates].sort();
+    const fmtD = (s) => s; // already YYYY-MM-DD
+    // Weighted avg BB for this period
+    let wH = 0, wBB = 0;
+    for (const [stk, v] of Object.entries(P.by_stakes)) {
+      const m = stk.match(/€?([\d.]+)\s*\/\s*€?([\d.]+)/);
+      if (m) { wBB += parseFloat(m[2]) * v.hands; wH += v.hands; }
+    }
+    const periodAvgBB = wH > 0 ? wBB / wH : avgBB;
+    const bb100p = P.hands > 0 ? Math.round(((P.pnl / periodAvgBB) / (P.hands / 100)) * 100) / 100 : 0;
+    // Aggregate preflop totals
+    let tH=0, tV=0, tP=0, tL=0, t3=0, t3o=0, tCC=0, tCCo=0, tF3=0, tF3o=0, tFR=0, tFRo=0, t4=0, t4o=0, tRfi=0, tRfio=0;
+    let allOpens = [];
+    const periodPreByPos = {};
+    for (const [pos, a] of Object.entries(P.pre)) {
+      tH += a.hands; tV += a.vpip; tP += a.pfr; tL += a.limp;
+      t3 += a.three_bet; t3o += a.three_bet_opp;
+      tCC += a.cold_call; tCCo += a.cold_call_opp;
+      tF3 += a.fold_to_3bet; tF3o += a.fold_to_3bet_opp;
+      tFR += a.fold_vs_raise; tFRo += a.fold_vs_raise_opp;
+      t4 += a.four_bet; t4o += a.four_bet_opp;
+      tRfi += a.rfi; tRfio += a.rfi_opp;
+      allOpens = allOpens.concat(a.open_sizes);
+      periodPreByPos[pos] = {
+        hands: a.hands,
+        vpip: pct(a.vpip, a.hands), pfr: pct(a.pfr, a.hands),
+        rfi: pct(a.rfi, a.rfi_opp), limp: pct(a.limp, a.hands),
+        three_bet: pct(a.three_bet, a.three_bet_opp),
+        cold_call: pct(a.cold_call, a.cold_call_opp),
+        fold_vs_raise: pct(a.fold_vs_raise, a.fold_vs_raise_opp),
+        fold_to_3bet: pct(a.fold_to_3bet, a.fold_to_3bet_opp),
+        call_3bet: pct(a.call_3bet, a.fold_to_3bet_opp),
+        four_bet: pct(a.four_bet, a.four_bet_opp),
+        iso_raise: pct(a.iso_raise, a.iso_opp),
+        overlimp: pct(a.overlimp, a.overlimp_opp),
+        squeeze: pct(a.squeeze, a.squeeze_opp)
+      };
+    }
+    const flP = P.post.flop, tuP = P.post.turn, riP = P.post.river;
+    const afP = (flP.bets+flP.raises+tuP.bets+tuP.raises+riP.bets+riP.raises) / Math.max(1, flP.calls+tuP.calls+riP.calls);
+    const avgOpenBB = allOpens.length > 0 ? Math.round((allOpens.reduce((s,x)=>s+x,0) / allOpens.length) * 100) / 100 : 0;
+    return {
+      dates: `${fmtD(datesSorted[0])} → ${fmtD(datesSorted[datesSorted.length-1])}`,
+      pnl_eur: Math.round(P.pnl * 100) / 100,
+      hands: P.hands,
+      bb_per_100: bb100p,
+      sessions: P.sessions,
+      stats: {
+        hands: tH,
+        vpip: pct(tV, tH),
+        pfr: pct(tP, tH),
+        vpip_pfr_gap: Math.round((pct(tV, tH) - pct(tP, tH)) * 10) / 10,
+        limp_pct: pct(tL, tH),
+        open_raise_pct: pct(tRfi, tRfio),
+        three_bet_pct: pct(t3, t3o),
+        cold_call_pct: pct(tCC, tCCo),
+        fold_to_3bet_pct: pct(tF3, tF3o),
+        four_bet_pct: pct(t4, t4o),
+        fold_vs_raise_pct: pct(tFR, tFRo),
+        cbet_flop_pct: pct(flP.cbet, flP.cbet_opp),
+        cbet_turn_pct: pct(tuP.cbet, tuP.cbet_opp),
+        donk_bet_pct: pct(flP.donk, flP.donk_opp),
+        check_raise_flop_pct: pct(flP.xr, flP.xr_opp),
+        fold_to_cbet_pct: pct(flP.fold_to_cbet, flP.fold_to_cbet_opp),
+        wtsd_pct: pct(flP.wtsd, flP.saw),
+        wsd_pct: pct(flP.wsd, flP.wtsd),
+        af: Math.round(afP * 100) / 100,
+        river_fold_to_bet_pct: pct(riP.fold_to_bet, riP.faced_bet),
+        avg_open_size_bb: avgOpenBB,
+        by_position: periodPreByPos
+      }
+    };
+  }
+  const goodPeriod = computePeriodSnapshot(agg.period_split.good);
+  const badPeriod  = computePeriodSnapshot(agg.period_split.bad);
+
+  // Compute differences (bad - good) for each numeric stat
+  const statDiffs = {};
+  const keyChanges = [];
+  if (goodPeriod.stats && badPeriod.stats) {
+    for (const k of Object.keys(goodPeriod.stats)) {
+      if (typeof goodPeriod.stats[k] !== 'number') continue;
+      const d = Math.round((badPeriod.stats[k] - goodPeriod.stats[k]) * 10) / 10;
+      statDiffs[k] = { good: goodPeriod.stats[k], bad: badPeriod.stats[k], delta: d };
+      if (Math.abs(d) >= 2 && k !== 'hands') {
+        keyChanges.push({ stat: k, good: goodPeriod.stats[k], bad: badPeriod.stats[k], delta: d });
+      }
+    }
+    keyChanges.sort((a,b) => Math.abs(b.delta) - Math.abs(a.delta));
+  }
+
   // Build final JSON matching original schema
   const out = {
     _metadata: {
@@ -1112,12 +1250,13 @@ async function main() {
       stable: []
     },
     period_comparison: {
-      _description: 'Period comparison not yet computed by this build script. Re-run with manual split if needed.',
-      good_period: { dates: 'N/A', pnl_eur: 0, hands: 0, bb_per_100: 0, sessions: 0, stats: { hands: 0, vpip: 0, pfr: 0, vpip_pfr_gap: 0, limp_pct: 0, open_raise_pct: 0, three_bet_pct: 0, cold_call_pct: 0, fold_to_3bet_pct: 0, cbet_flop_pct: 0, cbet_turn_pct: 0, donk_bet_pct: 0, check_raise_flop_pct: 0, fold_to_cbet_pct: 0, wtsd_pct: 0, wsd_pct: 0, af: 0, river_fold_to_bet_pct: 0, avg_open_size_bb: 0, by_position: preByPos } },
-      bad_period: { dates: 'N/A', pnl_eur: 0, hands: 0, bb_per_100: 0, sessions: 0, stats: { hands: 0, vpip: 0, pfr: 0, vpip_pfr_gap: 0, limp_pct: 0, open_raise_pct: 0, three_bet_pct: 0, cold_call_pct: 0, fold_to_3bet_pct: 0, cbet_flop_pct: 0, cbet_turn_pct: 0, donk_bet_pct: 0, check_raise_flop_pct: 0, fold_to_cbet_pct: 0, wtsd_pct: 0, wsd_pct: 0, af: 0, river_fold_to_bet_pct: 0, avg_open_size_bb: 0, by_position: preByPos } },
-      stat_differences: {},
-      key_changes: [],
-      target_stats_from_good_period: { _description: 'Not computed', vpip: overallVPIP, pfr: overallPFR, vpip_pfr_gap: overallVPIP-overallPFR, limp_pct: overallLimp, three_bet_pct: overall3bet, cold_call_pct: 0, fold_to_3bet_pct: 0, open_raise_pct: 0, cbet_flop_pct: postComp.flop.cbet_pct, donk_bet_pct: postComp.flop.donk_pct, check_raise_flop_pct: postComp.flop.xr_pct, af: Math.round(af*100)/100, by_position: preByPos }
+      _description: `Cash sessions split at ${PERIOD_CUTOFF_DATE}. "good" = before cutoff, "bad" = on/after.`,
+      cutoff_date: PERIOD_CUTOFF_DATE,
+      good_period: goodPeriod,
+      bad_period: badPeriod,
+      stat_differences: statDiffs,
+      key_changes: keyChanges.slice(0, 10),
+      target_stats_from_good_period: goodPeriod.stats || { _description: 'No good-period data', vpip: overallVPIP, pfr: overallPFR, vpip_pfr_gap: overallVPIP-overallPFR, limp_pct: overallLimp, three_bet_pct: overall3bet, cbet_flop_pct: postComp.flop.cbet_pct, donk_bet_pct: postComp.flop.donk_pct, check_raise_flop_pct: postComp.flop.xr_pct, af: Math.round(af*100)/100, by_position: preByPos }
     },
     weekly_pnl_curve: weeklyCurve,
     time_analysis: { by_day_of_week: dowOut, by_hour_of_day: hourOut },
