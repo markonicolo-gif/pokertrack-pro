@@ -51,7 +51,9 @@ function safeFilename(raw) {
 function runScript(script) {
   return new Promise((resolve) => {
     const t0 = Date.now();
-    const child = spawn(process.execPath, [path.join(ROOT, script)], {
+    // Give the parser a big heap; build-deep-from-zips.js peaks ~1.5-2 GB
+    // when re-parsing all 35 zips, which OOMs the default ~1.5 GB limit.
+    const child = spawn(process.execPath, ['--max-old-space-size=8192', path.join(ROOT, script)], {
       cwd: ROOT,
       env: process.env,
     });
