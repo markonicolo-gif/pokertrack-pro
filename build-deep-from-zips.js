@@ -310,7 +310,8 @@ async function parseSession(text) {
     tagg.by_hour[hour] = tagg.by_hour[hour] || { p:0, h:0, s:0 };
     tagg.by_hour[hour].p += cashNet; tagg.by_hour[hour].h += games.length; tagg.by_hour[hour].s++;
     const tWeekStart = new Date(date); const tDay = tWeekStart.getDay(); const tDiff = tDay === 0 ? -6 : 1 - tDay; tWeekStart.setDate(tWeekStart.getDate() + tDiff);
-    const tWkKey = tWeekStart.toISOString().slice(0,10);
+    // Use LOCAL components (see cash-weekly comment for the TZ rationale)
+    const tWkKey = `${tWeekStart.getFullYear()}-${String(tWeekStart.getMonth()+1).padStart(2,'0')}-${String(tWeekStart.getDate()).padStart(2,'0')}`;
     tagg.weekly[tWkKey] = tagg.weekly[tWkKey] || { hands:0, pnl:0 };
     tagg.weekly[tWkKey].hands += games.length; tagg.weekly[tWkKey].pnl += cashNet;
 
@@ -358,9 +359,11 @@ async function parseSession(text) {
   period.by_stakes[stakesKey] = period.by_stakes[stakesKey] || { hands:0, pnl:0, sessions:0 };
   period.by_stakes[stakesKey].hands += games.length; period.by_stakes[stakesKey].pnl += sessionPnl; period.by_stakes[stakesKey].sessions++;
 
-  // Weekly bucket (Monday)
+  // Weekly bucket (Monday). Use LOCAL date components (toISOString shifts to UTC and
+  // splits late-night-local Mondays back into the previous Sunday's week, producing
+  // duplicate phantom buckets like 2026-04-12 and 2026-04-13 for the same calendar week.)
   const weekStart = new Date(date); const day = weekStart.getDay(); const diff = day === 0 ? -6 : 1 - day; weekStart.setDate(weekStart.getDate() + diff);
-  const wkKey = weekStart.toISOString().slice(0,10);
+  const wkKey = `${weekStart.getFullYear()}-${String(weekStart.getMonth()+1).padStart(2,'0')}-${String(weekStart.getDate()).padStart(2,'0')}`;
   agg.weekly[wkKey] = agg.weekly[wkKey] || { hands:0, pnl:0 };
   agg.weekly[wkKey].hands += games.length; agg.weekly[wkKey].pnl += sessionPnl;
   period.weekly[wkKey] = period.weekly[wkKey] || { hands:0, pnl:0 };
