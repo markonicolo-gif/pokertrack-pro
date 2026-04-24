@@ -337,12 +337,31 @@ async function parseSession(text) {
   const sessionDateStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
   const period = sessionDateStr < PERIOD_CUTOFF_DATE ? agg.period_split.good : agg.period_split.bad;
 
+  // Extract a "0.25/0.50" style stakes string for SEED_SESSIONS / browser table
+  const stakesShort = stakeMatch ? `${stakeMatch[1]}/${stakeMatch[2]}` : (stakesKey || '');
+
   // Aggregate session-level
   agg.total_sessions++;
   agg.total_pnl += sessionPnl;
   agg.total_hands += games.length;
   agg.hand_dates.push(date);
-  agg.sessions.push({ pnl: Math.round(sessionPnl*100)/100, hands: games.length, date: startStr, stakes: stakesKey, dow, hour, tablesize });
+  agg.sessions.push({
+    pnl: Math.round(sessionPnl*100)/100,
+    hands: games.length,
+    date: startStr,
+    stakes: stakesKey,
+    dow, hour, tablesize,
+    // Extra fields for SEED_SESSIONS rebuild (per-session detail consumed by the
+    // browser dashboard). buyIn/cashOut are derived from iPoker's <bets>/<wins>
+    // session tags so net P&L = cashOut - buyIn matches sessionPnl.
+    _seed: {
+      dateYMD: sessionDateStr,
+      buyIn: Math.round(sBets * 100) / 100,
+      cashOut: Math.round(sWins * 100) / 100,
+      stakesShort,
+      rake: 0,
+    }
+  });
   agg.by_month[ym] = agg.by_month[ym] || { hands:0, pnl:0, sessions:0 };
   agg.by_month[ym].hands += games.length; agg.by_month[ym].pnl += sessionPnl; agg.by_month[ym].sessions++;
   agg.by_stakes[stakesKey] = agg.by_stakes[stakesKey] || { hands:0, pnl:0, sessions:0 };
@@ -1386,6 +1405,40 @@ async function main() {
 
   fs.writeFileSync(path.join(DATA_DIR, 'platinex_dashboard_complete.json'), JSON.stringify(out));
   console.log(`\n✅ Wrote data/platinex_dashboard_complete.json (${(fs.statSync(path.join(DATA_DIR, 'platinex_dashboard_complete.json')).size / 1024).toFixed(0)} KB)`);
+
+  // === Also write data/sessions.json (consumed by rebuild-sessions.js to bake
+  // the SEED_SESSIONS array into index.html, so an empty-localStorage / incognito
+  // load shows the full history instead of the frozen seed). ===
+  // Stable id derived from session start date + table to keep merges idempotent.
+  function stableId(s, idx) {
+    const base = `${s._seed && s._seed.dateYMD || ''}|${s.date || ''}|${s.stakes || ''}|${s.hands}|${idx}`;
+    // Simple FNV-1a -> hex (8 chars) is plenty unique across ~10k sessions
+    let h = 0x811c9dc5;
+    for (let i = 0; i < base.length; i++) { h ^= base.charCodeAt(i); h = (h * 0x01000193) >>> 0; }
+    return 'z-' + h.toString(16).padStart(8, '0') + '-' + idx.toString(36);
+  }
+  const seedSessions = agg.sessions
+    .filter(s => s._seed && s._seed.dateYMD)
+    .map((s, i) => ({
+      id: stableId(s, i),
+      date: s._seed.dateYMD,
+      location: 'Online',
+      gameType: 'PLO',
+      stakes: s._seed.stakesShort,
+      buyIn: s._seed.buyIn,
+      cashOut: s._seed.cashOut,
+      duration: 0,
+      tableSize: String(s.tablesize || '6'),
+      tags: 'Online',
+      mood: 3,
+      rake: s._seed.rake,
+      hands: s.hands,
+      showdownWin: 0,
+      nonShowdownWin: 0,
+      notes: `${s.hands} hands · auto-imported from zip`
+    }));
+  fs.writeFileSync(path.join(DATA_DIR, 'sessions.json'), JSON.stringify(seedSessions));
+  console.log(`✅ Wrote data/sessions.json (${seedSessions.length} sessions, ${(fs.statSync(path.join(DATA_DIR, 'sessions.json')).size / 1024).toFixed(0)} KB)`);
   console.log(`\n=== TOURNAMENT TOTALS ===`);
   const cashE = tournamentSessions.filter(t => t.paidWith === 'cash');
   const tickE = tournamentSessions.filter(t => t.paidWith === 'ticket');

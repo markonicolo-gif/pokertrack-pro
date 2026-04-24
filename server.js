@@ -94,8 +94,11 @@ function queueRebuild(savedAs) {
     try {
       const r1 = await runScript('build-deep-from-zips.js');
       const r2 = await runScript('build-deep-analysis.js');
-      job.results = [r1, r2];
-      job.state = (r1.code === 0 && r2.code === 0) ? 'done' : 'failed';
+      // r3 bakes the fresh sessions.json into SEED_SESSIONS in index.html
+      // so an empty-localStorage / incognito load shows the latest day too.
+      const r3 = await runScript('rebuild-sessions.js');
+      job.results = [r1, r2, r3];
+      job.state = (r1.code === 0 && r2.code === 0 && r3.code === 0) ? 'done' : 'failed';
     } catch (err) {
       job.state = 'failed';
       job.results = [{ script: 'wrapper', code: -1, log: err.message }];

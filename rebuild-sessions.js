@@ -20,8 +20,12 @@ html = html.replace(seedRe, 'const SEED_SESSIONS = ' + JSON.stringify(sessions) 
 console.log('SEED_SESSIONS replaced with', sessions.length, 'sessions');
 
 // 2. Bump DATA_VERSION (sessions actually changed)
-html = html.replace(/const DATA_VERSION = \d+;[^\n]*/, 'const DATA_VERSION = 10; // bump ONLY when SEED_SESSIONS change');
-console.log('DATA_VERSION set to 10');
+// Use a monotonically increasing version derived from sessions count + build time
+// so every rebuild from build-deep-from-zips.js triggers the merge logic in
+// browsers that already loaded an older seed.
+const newVersion = sessions.length + Math.floor(Date.now() / 1000);
+html = html.replace(/const DATA_VERSION = \d+;[^\n]*/, `const DATA_VERSION = ${newVersion}; // auto-bumped by rebuild-sessions.js`);
+console.log('DATA_VERSION set to', newVersion);
 
 // 3. Fix getSessions() to merge instead of wipe
 const oldFn = /function getSessions\(\) \{\s*try \{[\s\S]*?\} catch \{[^}]*\}\s*\}/;
