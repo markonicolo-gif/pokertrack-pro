@@ -1161,9 +1161,27 @@ function renderPlayerStatsView(container) {
       const ab = d.bbHands > 0 ? d.bbWeighted / d.bbHands : 0;
       d.bb100 = d.h > 0 && ab > 0 ? (d.p/ab)/(d.h/100) : 0;
     });
-    const lastDay = sortedDays[0] || null;
+    const lastDayLocal = sortedDays[0] || null;
     // Full-stat snapshot of the last day from build-time deep analysis (when available)
     const lastDayDeep = D.last_day || null;
+    // The JSON (rebuilt from data\*.zip on every server import) is the source of truth.
+    // localStorage may lag (e.g. user uploaded a zip via the server but localStorage
+    // wasn't enriched). If the JSON's last_day is newer, prefer it for the hero card.
+    let lastDay = lastDayLocal;
+    if (lastDayDeep && lastDayDeep.date && (!lastDayLocal || lastDayDeep.date > lastDayLocal.date)) {
+      const ldd = lastDayDeep;
+      lastDay = {
+        date: ldd.date,
+        p: typeof ldd.pnl_eur === 'number' ? ldd.pnl_eur : 0,
+        h: typeof ldd.hands === 'number' ? ldd.hands : 0,
+        count: typeof ldd.sessions === 'number' ? ldd.sessions : 1,
+        stakes: ldd.stakes || (ldd.dates ? '' : '-'),
+        bb100: typeof ldd.bb_per_100 === 'number' ? ldd.bb_per_100 : 0,
+      };
+      // Also splice it into the Recent Days table so the most recent day
+      // (from JSON) shows even when localStorage is behind.
+      sortedDays.unshift(lastDay);
+    }
     // Trend: last 5 vs prior 5
     const prior5cutoff = new Date(today); prior5cutoff.setDate(prior5cutoff.getDate() - 10);
     const prior5 = sortedSessions.filter(s => new Date(s.date) >= prior5cutoff && new Date(s.date) < last5cutoff);
