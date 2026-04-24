@@ -1595,7 +1595,7 @@ const GK = 'pokerGoals_v2';
 const BK = 'pokerBankroll_v2';
 const LK = 'pokerLive_v2';
 
-const DATA_VERSION = 1777008912; // auto-bumped by rebuild-sessions.js
+const DATA_VERSION = 1777009204; // auto-bumped by rebuild-sessions.js
 const DVK = 'pokerDataVersion';
 function getSessions() {
   try {
@@ -1603,7 +1603,8 @@ function getSessions() {
     // Self-heal: if storage size exceeds the seed by more than 200 sessions, the
     // user is almost certainly carrying a doubled history from the v10 -> v1+ epoch
     // bump. Force a re-merge regardless of version comparison.
-    let storedSnap = (() => { try { return JSON.parse(localStorage.getItem(SK)) || []; } catch { return []; } })();
+    let storedSnap = [];
+    try { storedSnap = JSON.parse(localStorage.getItem(SK)) || []; } catch (_e) { storedSnap = []; }
     const doubled = storedSnap.length > SEED_SESSIONS.length + 200;
     if ((storedVer < DATA_VERSION || doubled) && SEED_SESSIONS.length > 0) {
       // Dedup by CONTENT signature (date|hands|buyIn|cashOut|stakes) NOT by id,
@@ -1620,20 +1621,6 @@ function getSessions() {
       return merged;
     }
     if (storedSnap.length > 0) return storedSnap;
-    if (SEED_SESSIONS.length > 0) { saveSessions(SEED_SESSIONS); localStorage.setItem(DVK, String(DATA_VERSION)); return [...SEED_SESSIONS]; }
-    return [];
-  } catch { return []; }
-})();
-      const seedIds = new Set(SEED_SESSIONS.map(s => s.id));
-      const userAdded = stored.filter(s => !seedIds.has(s.id));
-      const merged = [...SEED_SESSIONS, ...userAdded];
-      merged.sort((a, b) => a.date.localeCompare(b.date));
-      localStorage.setItem(DVK, String(DATA_VERSION));
-      saveSessions(merged);
-      return merged;
-    }
-    const stored = JSON.parse(localStorage.getItem(SK)) || [];
-    if (stored.length > 0) return stored;
     if (SEED_SESSIONS.length > 0) { saveSessions(SEED_SESSIONS); localStorage.setItem(DVK, String(DATA_VERSION)); return [...SEED_SESSIONS]; }
     return [];
   } catch { return []; }

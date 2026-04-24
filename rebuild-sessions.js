@@ -27,15 +27,21 @@ const newVersion = sessions.length + Math.floor(Date.now() / 1000);
 html = html.replace(/const DATA_VERSION = \d+;[^\n]*/, `const DATA_VERSION = ${newVersion}; // auto-bumped by rebuild-sessions.js`);
 console.log('DATA_VERSION set to', newVersion);
 
-// 3. Fix getSessions() to merge instead of wipe
-const oldFn = /function getSessions\(\) \{\s*try \{[\s\S]*?\} catch \{[^}]*\}\s*\}/;
+// 3. Fix getSessions() to merge instead of wipe.
+// IMPORTANT: anchor on the next `function saveSessions` declaration so the
+// regex always swallows the FULL outer getSessions() body, even when it
+// contains nested try/catch blocks. The previous non-greedy regex matched
+// the FIRST `} catch {}` it found and left the tail of the old function as
+// orphan code -> blank dashboard.
+const oldFn = /function getSessions\(\)[\s\S]*?\r?\n\}\r?\nfunction saveSessions/;
 const newGetSessions = `function getSessions() {
   try {
     const storedVer = parseInt(localStorage.getItem(DVK)) || 0;
     // Self-heal: if storage size exceeds the seed by more than 200 sessions, the
     // user is almost certainly carrying a doubled history from the v10 -> v1+ epoch
     // bump. Force a re-merge regardless of version comparison.
-    let storedSnap = (() => { try { return JSON.parse(localStorage.getItem(SK)) || []; } catch { return []; } })();
+    let storedSnap = [];
+    try { storedSnap = JSON.parse(localStorage.getItem(SK)) || []; } catch (_e) { storedSnap = []; }
     const doubled = storedSnap.length > SEED_SESSIONS.length + 200;
     if ((storedVer < DATA_VERSION || doubled) && SEED_SESSIONS.length > 0) {
       // Dedup by CONTENT signature (date|hands|buyIn|cashOut|stakes) NOT by id,
@@ -55,7 +61,8 @@ const newGetSessions = `function getSessions() {
     if (SEED_SESSIONS.length > 0) { saveSessions(SEED_SESSIONS); localStorage.setItem(DVK, String(DATA_VERSION)); return [...SEED_SESSIONS]; }
     return [];
   } catch { return []; }
-}`;
+}
+function saveSessions`;
 
 if (oldFn.test(html)) {
   html = html.replace(oldFn, newGetSessions);
@@ -73,5 +80,5 @@ const pnl = sessions.reduce((s,x) => s + (x.cashOut - x.buyIn), 0);
 const rake = sessions.reduce((s,x) => s + (x.rake||0), 0);
 const hands = sessions.reduce((s,x) => s + (x.hands||0), 0);
 console.log('P&L:', pnl.toFixed(2), 'Rake:', rake.toFixed(2), 'Hands:', hands);
-console.log('Merge logic:', html.includes('seedIds') ? 'OK' : 'FAIL');
+console.log('Merge logic:', html.includes('seedSigs') && html.includes('doubled = storedSnap.length') ? 'OK' : 'FAIL');
 console.log('DATA_VERSION=10:', html.includes('DATA_VERSION = 10') ? 'OK' : 'FAIL');
