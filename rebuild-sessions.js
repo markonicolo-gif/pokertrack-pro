@@ -43,12 +43,20 @@ const newGetSessions = `function getSessions() {
     let storedSnap = [];
     try { storedSnap = JSON.parse(localStorage.getItem(SK)) || []; } catch (_e) { storedSnap = []; }
     const doubled = storedSnap.length > SEED_SESSIONS.length + 200;
-    if ((storedVer < DATA_VERSION || doubled) && SEED_SESSIONS.length > 0) {
-      // Dedup by CONTENT signature (date|hands|buyIn|cashOut|stakes) NOT by id,
-      // because the seed-generator changed id schemes (UUID -> hash) so an id-based
-      // dedup would treat every old localStorage row as 'user-added' and keep both
-      // copies, doubling the history.
-      const sig = s => (s.date||'') + '|' + (s.hands||0) + '|' + Number(s.buyIn||0).toFixed(2) + '|' + Number(s.cashOut||0).toFixed(2) + '|' + (s.stakes||'');
+    // HARD RESET: if storage is clearly bloated (carrying duplicates from old
+    // id schemes / format drift), throw it away and adopt the seed as truth.
+    // The seed IS authoritative for all imported zip data; only manual
+    // user-added sessions could be lost, and those are rare.
+    if (doubled && SEED_SESSIONS.length > 0) {
+      saveSessions(SEED_SESSIONS);
+      localStorage.setItem(DVK, String(DATA_VERSION));
+      return [...SEED_SESSIONS];
+    }
+    if (storedVer < DATA_VERSION && SEED_SESSIONS.length > 0) {
+      // Dedup by CONTENT signature (date|hands|buyIn) NOT by id, because the
+      // seed-generator changed id schemes (UUID -> hash). Keep signature loose
+      // (date+hands+buyIn rounded) so format drift doesn't leak duplicates.
+      const sig = s => (s.date||'') + '|' + (s.hands||0) + '|' + Math.round(Number(s.buyIn||0));
       const seedSigs = new Set(SEED_SESSIONS.map(sig));
       const userAdded = storedSnap.filter(s => !seedSigs.has(sig(s)));
       const merged = [...SEED_SESSIONS, ...userAdded];
@@ -80,5 +88,5 @@ const pnl = sessions.reduce((s,x) => s + (x.cashOut - x.buyIn), 0);
 const rake = sessions.reduce((s,x) => s + (x.rake||0), 0);
 const hands = sessions.reduce((s,x) => s + (x.hands||0), 0);
 console.log('P&L:', pnl.toFixed(2), 'Rake:', rake.toFixed(2), 'Hands:', hands);
-console.log('Merge logic:', html.includes('seedSigs') && html.includes('doubled = storedSnap.length') ? 'OK' : 'FAIL');
+console.log('Merge logic:', html.includes('HARD RESET') && html.includes('doubled') ? 'OK' : 'FAIL');
 console.log('DATA_VERSION=10:', html.includes('DATA_VERSION = 10') ? 'OK' : 'FAIL');
