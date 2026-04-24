@@ -70,16 +70,39 @@ function runScript(script) {
 }
 
 // Serialize rebuilds so concurrent uploads don't stomp each other.
+// Track current job state for the polling endpoint.
 let rebuildChain = Promise.resolve();
-function queueRebuild() {
-  const p = rebuildChain.then(async () => {
-    const r1 = await runScript('build-deep-from-zips.js');
-    const r2 = await runScript('build-deep-analysis.js');
-    return [r1, r2];
-  });
-  // Don't let one failure poison the chain
-  rebuildChain = p.catch(() => {});
-  return p;
+let jobSeq = 0;
+const jobs = new Map(); // jobId -> { id, state, startedAt, finishedAt, results, savedAs }
+const JOB_TTL_MS = 30 * 60 * 1000; // forget jobs older than 30 min
+
+function gcJobs() {
+  const now = Date.now();
+  for (const [id, j] of jobs) {
+    if (j.finishedAt && (now - j.finishedAt) > JOB_TTL_MS) jobs.delete(id);
+  }
+}
+
+function queueRebuild(savedAs) {
+  const id = ++jobSeq;
+  const job = { id, state: 'queued', savedAs, startedAt: null, finishedAt: null, results: null };
+  jobs.set(id, job);
+  gcJobs();
+  rebuildChain = rebuildChain.then(async () => {
+    job.state = 'running';
+    job.startedAt = Date.now();
+    try {
+      const r1 = await runScript('build-deep-from-zips.js');
+      const r2 = await runScript('build-deep-analysis.js');
+      job.results = [r1, r2];
+      job.state = (r1.code === 0 && r2.code === 0) ? 'done' : 'failed';
+    } catch (err) {
+      job.state = 'failed';
+      job.results = [{ script: 'wrapper', code: -1, log: err.message }];
+    }
+    job.finishedAt = Date.now();
+  }).catch(() => {});
+  return id;
 }
 
 function sendJson(res, status, obj) {
@@ -172,18 +195,18 @@ async function handleUploadZip(req, res) {
         console.log(`[upload] ${filename} already in data/, no rewrite needed`);
       }
 
-      // Trigger a rebuild even if file existed, so user gets a fresh JSON either way.
-      const t0 = Date.now();
-      const results = await queueRebuild();
-      const totalMs = Date.now() - t0;
-      const allOk = results.every(r => r.code === 0);
-      sendJson(res, allOk ? 200 : 500, {
-        ok: allOk,
+      // Respond IMMEDIATELY with a job id; rebuild runs in background.
+      // The browser polls /api/rebuild-status?job=ID until state==='done'.
+      // This means a slow rebuild can never make the upload "hang".
+      const jobId = queueRebuild(filename);
+      sendJson(res, 202, {
+        ok: true,
+        accepted: true,
+        jobId,
         savedAs: filename,
         bytes: buf.length,
         alreadyHad: alreadyHave,
-        rebuildMs: totalMs,
-        results,
+        statusUrl: `/api/rebuild-status?job=${jobId}`,
       });
     } catch (err) {
       console.error('[upload] error', err);
@@ -196,6 +219,28 @@ async function handleUploadZip(req, res) {
   });
 }
 
+function handleRebuildStatus(req, res) {
+  const u = new URL(req.url, 'http://x');
+  const id = parseInt(u.searchParams.get('job') || '0', 10);
+  if (!id) {
+    // No job id -> report queue depth and the most recent job
+    const recent = [...jobs.values()].sort((a, b) => b.id - a.id)[0] || null;
+    return sendJson(res, 200, { ok: true, recent, queueSize: jobs.size });
+  }
+  const job = jobs.get(id);
+  if (!job) return sendJson(res, 404, { ok: false, error: 'job not found (may have expired)' });
+  const now = Date.now();
+  sendJson(res, 200, {
+    ok: true,
+    id: job.id,
+    state: job.state,
+    savedAs: job.savedAs,
+    elapsedMs: job.startedAt ? (job.finishedAt || now) - job.startedAt : 0,
+    queuedMs: job.startedAt ? null : (now - 0), // unknown queue start; just keep null when running
+    results: job.state === 'done' || job.state === 'failed' ? job.results : null,
+  });
+}
+
 const server = http.createServer((req, res) => {
   // CORS-friendly defaults (only matters if you ever open from another origin)
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -205,6 +250,9 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'POST' && req.url.split('?')[0] === '/api/upload-zip') {
     return handleUploadZip(req, res);
+  }
+  if (req.method === 'GET' && req.url.split('?')[0] === '/api/rebuild-status') {
+    return handleRebuildStatus(req, res);
   }
   if (req.method === 'GET' && req.url.split('?')[0] === '/api/ping') {
     return sendJson(res, 200, { ok: true, server: 'pokertrack-pro', port: PORT });
