@@ -32,19 +32,26 @@ const oldFn = /function getSessions\(\) \{\s*try \{[\s\S]*?\} catch \{[^}]*\}\s*
 const newGetSessions = `function getSessions() {
   try {
     const storedVer = parseInt(localStorage.getItem(DVK)) || 0;
-    if (storedVer < DATA_VERSION && SEED_SESSIONS.length > 0) {
-      // Seed data updated - merge: keep seed + any user-added sessions not in seed
-      const stored = (() => { try { return JSON.parse(localStorage.getItem(SK)) || []; } catch { return []; } })();
-      const seedIds = new Set(SEED_SESSIONS.map(s => s.id));
-      const userAdded = stored.filter(s => !seedIds.has(s.id));
+    // Self-heal: if storage size exceeds the seed by more than 200 sessions, the
+    // user is almost certainly carrying a doubled history from the v10 -> v1+ epoch
+    // bump. Force a re-merge regardless of version comparison.
+    let storedSnap = (() => { try { return JSON.parse(localStorage.getItem(SK)) || []; } catch { return []; } })();
+    const doubled = storedSnap.length > SEED_SESSIONS.length + 200;
+    if ((storedVer < DATA_VERSION || doubled) && SEED_SESSIONS.length > 0) {
+      // Dedup by CONTENT signature (date|hands|buyIn|cashOut|stakes) NOT by id,
+      // because the seed-generator changed id schemes (UUID -> hash) so an id-based
+      // dedup would treat every old localStorage row as 'user-added' and keep both
+      // copies, doubling the history.
+      const sig = s => (s.date||'') + '|' + (s.hands||0) + '|' + Number(s.buyIn||0).toFixed(2) + '|' + Number(s.cashOut||0).toFixed(2) + '|' + (s.stakes||'');
+      const seedSigs = new Set(SEED_SESSIONS.map(sig));
+      const userAdded = storedSnap.filter(s => !seedSigs.has(sig(s)));
       const merged = [...SEED_SESSIONS, ...userAdded];
       merged.sort((a, b) => a.date.localeCompare(b.date));
       localStorage.setItem(DVK, String(DATA_VERSION));
       saveSessions(merged);
       return merged;
     }
-    const stored = JSON.parse(localStorage.getItem(SK)) || [];
-    if (stored.length > 0) return stored;
+    if (storedSnap.length > 0) return storedSnap;
     if (SEED_SESSIONS.length > 0) { saveSessions(SEED_SESSIONS); localStorage.setItem(DVK, String(DATA_VERSION)); return [...SEED_SESSIONS]; }
     return [];
   } catch { return []; }
