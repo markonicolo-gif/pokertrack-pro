@@ -345,7 +345,7 @@ async function parseSession(text) {
   agg.total_pnl += sessionPnl;
   agg.total_hands += games.length;
   agg.hand_dates.push(date);
-  agg.sessions.push({
+  const _currentSeedSession = {
     pnl: Math.round(sessionPnl*100)/100,
     hands: games.length,
     date: startStr,
@@ -359,9 +359,10 @@ async function parseSession(text) {
       buyIn: Math.round(sBets * 100) / 100,
       cashOut: Math.round(sWins * 100) / 100,
       stakesShort,
-      rake: 0,
+      rake: 0, // populated below from per-hand parseHand sum
     }
-  });
+  };
+  agg.sessions.push(_currentSeedSession);
   agg.by_month[ym] = agg.by_month[ym] || { hands:0, pnl:0, sessions:0 };
   agg.by_month[ym].hands += games.length; agg.by_month[ym].pnl += sessionPnl; agg.by_month[ym].sessions++;
   agg.by_stakes[stakesKey] = agg.by_stakes[stakesKey] || { hands:0, pnl:0, sessions:0 };
@@ -399,9 +400,14 @@ async function parseSession(text) {
   dayAgg.by_stakes[stakesKey].hands += games.length; dayAgg.by_stakes[stakesKey].pnl += sessionPnl; dayAgg.by_stakes[stakesKey].sessions++;
 
   // Per-hand parsing — pass [period, day] so VPIP/PFR etc. are tracked per period AND per day
+  const _rakeBefore = agg.total_rake;
   for (let g = 0; g < games.length; g++) {
     parseHand(games[g], bbSize, agg, [period, dayAgg]);
   }
+  // Per-session rake = sum of hero rake across this session's hands
+  const _sessionRake = Math.round((agg.total_rake - _rakeBefore) * 100) / 100;
+  _currentSeedSession._seed.rake = _sessionRake;
+  _currentSeedSession.rake = _sessionRake;
 }
 
 function parseHand(gameEl, bbSize, agg, extras) {
