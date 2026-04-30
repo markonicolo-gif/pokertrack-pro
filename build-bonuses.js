@@ -59,11 +59,24 @@ if (navMatch) {
 const storeMarker = "const SK = 'pokerSessions_v2';";
 const bonusStore = `const SEED_BONUSES = ${JSON.stringify(bonuses.amounts)};
 const BONUS_KEY = 'pokerBonuses_v1';
+const BONUS_VERSION_KEY = 'pokerBonusesVersion';
+const BONUS_DATA_VERSION = ${bonuses.amounts.length};
 
 function getBonuses() {
-  const stored = localStorage.getItem(BONUS_KEY);
-  if (stored) { try { return JSON.parse(stored); } catch(e) {} }
-  if (SEED_BONUSES.length > 0) { saveBonuses(SEED_BONUSES); return [...SEED_BONUSES]; }
+  const storedVer = parseInt(localStorage.getItem(BONUS_VERSION_KEY)) || 0;
+  let stored = [];
+  try { stored = JSON.parse(localStorage.getItem(BONUS_KEY)) || []; } catch(_) {}
+  // Self-heal: if seed is bigger than what's in storage AND user hasn't manually
+  // added more, refresh from seed. Heuristic: storage entries should not be
+  // FEWER than seed entries (we only ever append). If seed grew and storage is
+  // behind, auto-replace.
+  if (SEED_BONUSES.length > stored.length || storedVer < BONUS_DATA_VERSION) {
+    saveBonuses(SEED_BONUSES);
+    localStorage.setItem(BONUS_VERSION_KEY, String(BONUS_DATA_VERSION));
+    return [...SEED_BONUSES];
+  }
+  if (stored.length > 0) return stored;
+  if (SEED_BONUSES.length > 0) { saveBonuses(SEED_BONUSES); localStorage.setItem(BONUS_VERSION_KEY, String(BONUS_DATA_VERSION)); return [...SEED_BONUSES]; }
   return [];
 }
 function saveBonuses(arr) { localStorage.setItem(BONUS_KEY, JSON.stringify(arr)); }

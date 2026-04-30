@@ -97,8 +97,10 @@ function queueRebuild(savedAs) {
       // r3 bakes the fresh sessions.json into SEED_SESSIONS in index.html
       // so an empty-localStorage / incognito load shows the latest day too.
       const r3 = await runScript('rebuild-sessions.js');
-      job.results = [r1, r2, r3];
-      job.state = (r1.code === 0 && r2.code === 0 && r3.code === 0) ? 'done' : 'failed';
+      // r4 bakes the fresh bonuses.json into SEED_BONUSES in index.html.
+      const r4 = await runScript('build-bonuses.js');
+      job.results = [r1, r2, r3, r4];
+      job.state = (r1.code === 0 && r2.code === 0 && r3.code === 0 && r4.code === 0) ? 'done' : 'failed';
     } catch (err) {
       job.state = 'failed';
       job.results = [{ script: 'wrapper', code: -1, log: err.message }];
