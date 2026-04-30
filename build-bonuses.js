@@ -27,23 +27,25 @@ html = stripBetween(html, '/* BONUS_ROUTE_BEGIN */', '/* BONUS_ROUTE_END */');
 html = stripBetween(html, '/* BONUS_VIEW_BEGIN */', '/* BONUS_VIEW_END */');
 html = stripBetween(html, '<!-- BONUS_HERO_BEGIN -->', '<!-- BONUS_HERO_END -->');
 
-// LEGACY STRIP: older versions of this script injected the SEED_BONUSES + getBonuses
-// store WITHOUT markers, so they survive the marker-based strip above. If we still
-// see a `const SEED_BONUSES = [` that appears BEFORE our new marker, it must be the
-// legacy unmarked block — cut from there up to (but not including) the new marker.
+// LEGACY STRIP: older versions of this script injected the bonus store WITHOUT
+// markers. The legacy block is exactly:
+//   const SEED_BONUSES = [...];
+//   const BONUS_KEY = '...';
+//   function getBonuses() {...}
+//   function saveBonuses(...) {...}
+//   function addBonuses(...) {...}
+//   function getTotalBonus() {...}
+// followed by `// ===== BETS WON` and unrelated helpers (getBetsWon /
+// editCasinoWinnings / clearBrowserTournamentImports) that we MUST NOT touch —
+// they're referenced from the dashboard hero render.
+// Strip ONLY the bonus declarations, ending exactly at the getTotalBonus closing brace.
 {
-  const newMarkerIdx = html.indexOf('/* BONUS_STORE_BEGIN */');
-  const firstSeedIdx = html.indexOf('const SEED_BONUSES = [');
-  if (newMarkerIdx !== -1 && firstSeedIdx !== -1 && firstSeedIdx < newMarkerIdx) {
-    const removed = newMarkerIdx - firstSeedIdx;
-    html = html.slice(0, firstSeedIdx) + html.slice(newMarkerIdx);
-    console.log('Stripped legacy unmarked SEED_BONUSES block (' + removed + ' chars)');
+  const legacyRe = /const SEED_BONUSES = \[[\s\S]*?function getTotalBonus\(\) \{[^}]*\}\s*/;
+  const m = html.match(legacyRe);
+  if (m) {
+    html = html.replace(legacyRe, '');
+    console.log('Stripped legacy unmarked bonus declarations (' + m[0].length + ' chars)');
   }
-  // Also handle case where legacy exists but new marker block hasn't been injected yet
-  // (purely old file). In that case strip from `const SEED_BONUSES = [` to the closing
-  // `};` of getBonuses() — heuristic: find legacy and remove everything up to two
-  // consecutive newlines after the function ends. Skipped here; the full inject below
-  // will redefine these symbols anyway and the strip-above clause runs after re-runs.
 }
 
 // ========== 1. ADD CSS before PLAYER STATS CSS ==========
