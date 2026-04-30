@@ -8,8 +8,47 @@ const path = require('path');
 const bonuses = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'bonuses.json'), 'utf8'));
 let html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 
+// ============================================================================
+// IDEMPOTENCE: strip any previous injections before re-injecting. Each block
+// is wrapped in unique BEGIN/END markers so we can locate + delete cleanly,
+// no matter how many times the script has been run before.
+// ============================================================================
+function stripBetween(html, beginMarker, endMarker) {
+  // Use [\s\S] to match across newlines. Greedy NO-OP since markers are unique.
+  const re = new RegExp(beginMarker.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&') +
+    '[\\s\\S]*?' +
+    endMarker.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&'), 'g');
+  return html.replace(re, '');
+}
+html = stripBetween(html, '/* BONUS_CSS_BEGIN */', '/* BONUS_CSS_END */');
+html = stripBetween(html, '<!-- BONUS_NAV_BEGIN -->', '<!-- BONUS_NAV_END -->');
+html = stripBetween(html, '/* BONUS_STORE_BEGIN */', '/* BONUS_STORE_END */');
+html = stripBetween(html, '/* BONUS_ROUTE_BEGIN */', '/* BONUS_ROUTE_END */');
+html = stripBetween(html, '/* BONUS_VIEW_BEGIN */', '/* BONUS_VIEW_END */');
+html = stripBetween(html, '<!-- BONUS_HERO_BEGIN -->', '<!-- BONUS_HERO_END -->');
+
+// LEGACY STRIP: older versions of this script injected the SEED_BONUSES + getBonuses
+// store WITHOUT markers, so they survive the marker-based strip above. If we still
+// see a `const SEED_BONUSES = [` that appears BEFORE our new marker, it must be the
+// legacy unmarked block — cut from there up to (but not including) the new marker.
+{
+  const newMarkerIdx = html.indexOf('/* BONUS_STORE_BEGIN */');
+  const firstSeedIdx = html.indexOf('const SEED_BONUSES = [');
+  if (newMarkerIdx !== -1 && firstSeedIdx !== -1 && firstSeedIdx < newMarkerIdx) {
+    const removed = newMarkerIdx - firstSeedIdx;
+    html = html.slice(0, firstSeedIdx) + html.slice(newMarkerIdx);
+    console.log('Stripped legacy unmarked SEED_BONUSES block (' + removed + ' chars)');
+  }
+  // Also handle case where legacy exists but new marker block hasn't been injected yet
+  // (purely old file). In that case strip from `const SEED_BONUSES = [` to the closing
+  // `};` of getBonuses() — heuristic: find legacy and remove everything up to two
+  // consecutive newlines after the function ends. Skipped here; the full inject below
+  // will redefine these symbols anyway and the strip-above clause runs after re-runs.
+}
+
 // ========== 1. ADD CSS before PLAYER STATS CSS ==========
 const bonusCSS = `
+/* BONUS_CSS_BEGIN */
 /* ===== BONUS TRACKER ===== */
 .bonus-layout { display:flex; flex-direction:column; gap:1.25rem; }
 .bonus-hero-row { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:1rem; }
@@ -41,6 +80,7 @@ const bonusCSS = `
 .bonus-dist-sub { font-size:0.68rem; color:var(--text3); margin-top:0.2rem; }
 @media (max-width: 900px) { .bonus-hero-row, .bonus-dist-grid { grid-template-columns:1fr 1fr; } }
 @media (max-width: 600px) { .bonus-hero-row, .bonus-dist-grid { grid-template-columns:1fr; } }
+/* BONUS_CSS_END */
 `;
 const cssMarker = '/* ===== PLAYER STATS VIEW =====';
 html = html.replace(cssMarker, bonusCSS + '\n' + cssMarker);
@@ -50,14 +90,17 @@ const navMarker = /<button class="nav-item" data-view="playerstats">[\s\S]*?<\/b
 const navMatch = html.match(navMarker);
 if (navMatch) {
   html = html.replace(navMatch[0], navMatch[0] + `
+    <!-- BONUS_NAV_BEGIN -->
     <button class="nav-item" data-view="bonuses">
       <span class="nav-icon">&#127873;</span> Bonuses
-    </button>`);
+    </button>
+    <!-- BONUS_NAV_END -->`);
 }
 
 // ========== 3. ADD SEED_BONUSES + storage (separate from sessions) ==========
 const storeMarker = "const SK = 'pokerSessions_v2';";
-const bonusStore = `const SEED_BONUSES = ${JSON.stringify(bonuses.amounts)};
+const bonusStore = `/* BONUS_STORE_BEGIN */
+const SEED_BONUSES = ${JSON.stringify(bonuses.amounts)};
 const BONUS_KEY = 'pokerBonuses_v1';
 const BONUS_VERSION_KEY = 'pokerBonusesVersion';
 const BONUS_DATA_VERSION = ${bonuses.amounts.length};
@@ -87,17 +130,19 @@ function addBonuses(newAmounts) {
   return merged;
 }
 function getTotalBonus() { return getBonuses().reduce((s,v) => s + v, 0); }
+/* BONUS_STORE_END */
 
 ` + storeMarker;
 html = html.replace(storeMarker, bonusStore);
 
 // ========== 4. ADD VIEW ROUTING ==========
 const routeMarker = "else if (view === 'playerstats') renderPlayerStatsView(content);";
-html = html.replace(routeMarker, routeMarker + "\n  else if (view === 'bonuses') renderBonusView(content);");
+html = html.replace(routeMarker, routeMarker + "\n  /* BONUS_ROUTE_BEGIN */ else if (view === 'bonuses') renderBonusView(content); /* BONUS_ROUTE_END */");
 
 // ========== 5. ADD renderBonusView + importBonuses FUNCTIONS ==========
 const leakFnMarker = 'function renderLeakFinderView(container) {';
-const bonusViewFn = `function renderBonusView(container) {
+const bonusViewFn = `/* BONUS_VIEW_BEGIN */
+function renderBonusView(container) {
   const bonuses = getBonuses();
   const total = bonuses.reduce((s,v) => s + v, 0);
   const count = bonuses.length;
@@ -277,6 +322,7 @@ function importBonuses() {
   document.getElementById('bonus-import-text').value = '';
   setTimeout(() => renderBonusView(document.getElementById('content')), 1500);
 }
+/* BONUS_VIEW_END */
 
 `;
 html = html.replace(leakFnMarker, bonusViewFn + leakFnMarker);
@@ -286,10 +332,12 @@ const dashHeroRe = /(<div class="hero-label">All-Time Net Profit<\/div>\s*<div c
 const dashMatch = html.match(dashHeroRe);
 if (dashMatch) {
   html = html.replace(dashMatch[0], dashMatch[0] + `
+      <!-- BONUS_HERO_BEGIN -->
       <div style="font-size:0.82rem; color:var(--text2); margin-top:0.25rem">
         With Bonus: <span style="color:\${(tp + getTotalBonus()) >= 0 ? 'var(--green)' : 'var(--red)'}; font-weight:700">\${(tp + getTotalBonus() >= 0 ? '+' : '') + (tp + getTotalBonus()).toFixed(2)}</span>
         <span style="color:var(--text3); font-size:0.72rem; margin-left:0.5rem">(+\${getTotalBonus().toFixed(2)} bonus)</span>
-      </div>`);
+      </div>
+      <!-- BONUS_HERO_END -->`);
 }
 
 fs.writeFileSync(path.join(__dirname, 'index.html'), html, 'utf8');
