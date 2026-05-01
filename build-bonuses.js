@@ -111,11 +111,11 @@ function getBonuses() {
   const storedVer = parseInt(localStorage.getItem(BONUS_VERSION_KEY)) || 0;
   let stored = [];
   try { stored = JSON.parse(localStorage.getItem(BONUS_KEY)) || []; } catch(_) {}
-  // Self-heal: if seed is bigger than what's in storage AND user hasn't manually
-  // added more, refresh from seed. Heuristic: storage entries should not be
-  // FEWER than seed entries (we only ever append). If seed grew and storage is
-  // behind, auto-replace.
-  if (SEED_BONUSES.length > stored.length || storedVer < BONUS_DATA_VERSION) {
+  // Self-heal: ANY mismatch between stored version and current seed version
+  // means the operator-provided list has changed (additions OR removals OR
+  // corrections). Replace localStorage with the seed unconditionally — the
+  // server-side bonuses.json is the single source of truth.
+  if (storedVer !== BONUS_DATA_VERSION) {
     saveBonuses(SEED_BONUSES);
     localStorage.setItem(BONUS_VERSION_KEY, String(BONUS_DATA_VERSION));
     return [...SEED_BONUSES];
