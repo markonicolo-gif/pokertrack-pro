@@ -793,22 +793,62 @@ function parseHand(gameEl, bbSize, agg, extras) {
   }
 
   // === OPPONENT TRACKING (uses corrected action types) ===
+  // Per-hand context shared by every opponent at the table:
+  //   lastPFAggressor  - last player to raise preflop (needed for c-bet)
+  //   flopFirstBettor  - first player to lead the flop (needed for c-bet)
+  //   foldStreet[name] - round (1=preflop..4=river) at which a player first folded
+  //   showdownOccurred - hand reached the river with >=2 players still in (real showdown)
+  let lastPFAggressor = null;
+  for (let i = 0; i < preflop.length; i++) {
+    if (PRE_RAISE(preflop[i].type)) lastPFAggressor = preflop[i].player;
+  }
+  let flopFirstBettor = null;
+  {
+    const fa = roundActions[2] || [];
+    for (let i = 0; i < fa.length; i++) {
+      if (POST_AGG(fa[i].type) && fa[i].sum > 0) { flopFirstBettor = fa[i].player; break; }
+    }
+  }
+  const foldStreet = {};
+  for (let r = 1; r <= 4; r++) {
+    const ra = roundActions[r] || [];
+    for (let i = 0; i < ra.length; i++) {
+      if (ra[i].type === '0' && foldStreet[ra[i].player] === undefined) foldStreet[ra[i].player] = r;
+    }
+  }
+  const flopDealt  = !!(roundActions[2] && roundActions[2].length > 0);
+  const riverDealt = !!(roundActions[4] && roundActions[4].length > 0);
+  let nonFolders = 0;
+  for (const pl of playersList) if (foldStreet[pl.name] === undefined) nonFolders++;
+  const showdownOccurred = riverDealt && nonFolders >= 2;
+
   for (const p of playersList) {
     if (p.name === HERO) continue;
-    const o = agg.opps[p.name] = agg.opps[p.name] || { hands:0, vpip:0, vpip_opp:0, pfr:0, pfr_opp:0, three_bet:0, three_bet_opp:0, af_b_r:0, af_c:0, hero_pnl_bb:0, hero_pnl_eur:0 };
+    const o = agg.opps[p.name] = agg.opps[p.name] || { hands:0, bb_sum:0, vpip:0, vpip_opp:0, pfr:0, pfr_opp:0, three_bet:0, three_bet_opp:0, cbet:0, cbet_opp:0, wtsd:0, wtsd_opp:0, af_b_r:0, af_c:0, hero_pnl_bb:0, hero_pnl_eur:0, hh_hands:0 };
     o.hands++;
-    // Opponent VPIP/PFR from preflop actions (corrected: type 3 = call, type 23/7 = raise)
+    o.bb_sum += bbSize;  // stake-weighted BB across every shared hand (for bb/100 scaling)
+    // --- Preflop: VPIP / PFR / 3-bet ---
     let oVPIP = false, oPFR = false;
+    let raisesBeforeOpp = 0, oppActed = false, oppThreeBetOpp = false, oppThreeBet = false;
     const pf = roundActions[1] || [];
     for (let i = 0; i < pf.length; i++) {
-      if (pf[i].player !== p.name) continue;
-      const t = pf[i].type;
-      if (PRE_CALL(t) || PRE_RAISE(t)) oVPIP = true;
-      if (PRE_RAISE(t))                oPFR  = true;
+      const a = pf[i];
+      if (a.player === p.name) {
+        if (!oppActed) {
+          oppActed = true;
+          // Faced exactly one raise on first decision = 3-bet opportunity
+          if (raisesBeforeOpp === 1) { oppThreeBetOpp = true; if (PRE_RAISE(a.type)) oppThreeBet = true; }
+        }
+        if (PRE_CALL(a.type) || PRE_RAISE(a.type)) oVPIP = true;
+        if (PRE_RAISE(a.type))                     oPFR  = true;
+      } else if (!oppActed && PRE_RAISE(a.type)) {
+        raisesBeforeOpp++;
+      }
     }
     o.vpip_opp++; if (oVPIP) o.vpip++;
     o.pfr_opp++;  if (oPFR)  o.pfr++;
-    // Postflop AF for opponent (bets+raises / calls)
+    if (oppThreeBetOpp) { o.three_bet_opp++; if (oppThreeBet) o.three_bet++; }
+    // --- Postflop AF for opponent (bets+raises / calls) ---
     for (let r = 2; r <= 4; r++) {
       const ra = roundActions[r] || [];
       for (let i = 0; i < ra.length; i++) {
@@ -817,12 +857,26 @@ function parseHand(gameEl, bbSize, agg, extras) {
         if (POST_CALL(ra[i].type)) o.af_c++;
       }
     }
-  }
-  // Track hero P&L vs each opponent at the table
-  for (const p of playersList) {
-    if (p.name === HERO) continue;
-    agg.opps[p.name].hero_pnl_eur += heroNet;
-    agg.opps[p.name].hero_pnl_bb += heroNet / bbSize;
+    const foldedPF = foldStreet[p.name] === 1;
+    // --- C-bet: opponent was the last preflop aggressor and led the flop first ---
+    if (flopDealt && !foldedPF && lastPFAggressor === p.name) {
+      o.cbet_opp++;
+      if (flopFirstBettor === p.name) o.cbet++;
+    }
+    // --- WTSD: of hands where opp saw the flop, how often they reached showdown ---
+    if (flopDealt && !foldedPF) {
+      o.wtsd_opp++;
+      if (foldStreet[p.name] === undefined && showdownOccurred) o.wtsd++;
+    }
+    // --- Hero P&L vs this villain in CONTESTED pots (both voluntarily entered) ---
+    // Crediting every dealt hand to every villain over-counts wildly (a single
+    // villain could "cost" more than hero's lifetime loss). Restricting to pots
+    // both players actually played gives a true head-to-head figure.
+    if (heroVPIP && oVPIP) {
+      o.hero_pnl_eur += heroNet;
+      o.hero_pnl_bb  += heroNet / bbSize;
+      o.hh_hands++;
+    }
   }
 }
 
@@ -1052,17 +1106,24 @@ async function main() {
   const opponents = {};
   for (const [name, o] of Object.entries(agg.opps)) {
     if (o.hands < 5000) continue;
-    const heroBB = bbWeightedH > 0 ? avgBB : 1;
+    // Per-villain stake-weighted big blind across every shared hand. A single
+    // global avgBB mis-scales villains who play different stakes than hero's
+    // overall mix, which was the original bb/100 bug.
+    const villainBB = o.hands > 0 ? (o.bb_sum / o.hands) : (bbWeightedH > 0 ? avgBB : 1);
     opponents[name] = {
       hands: o.hands,
       vpip: pct(o.vpip, o.vpip_opp),
       pfr: pct(o.pfr, o.pfr_opp),
       af: o.af_c > 0 ? Math.round((o.af_b_r / o.af_c) * 100) / 100 : 0,
       three_bet: pct(o.three_bet, o.three_bet_opp),
-      cbet: 0,
-      wtsd: 0,
+      cbet: pct(o.cbet, o.cbet_opp),
+      wtsd: pct(o.wtsd, o.wtsd_opp),
+      // Hero P&L = net from CONTESTED pots (both VPIP'd) — a true head-to-head
+      // figure that won't absurdly exceed hero's lifetime total. bb/100 spreads
+      // that net over ALL shared hands at this villain's stakes, so its
+      // magnitude stays comparable to the overall win rate.
       hero_pnl_vs_eur: Math.round(o.hero_pnl_eur * 100) / 100,
-      hero_bb100_vs: Math.round(((o.hero_pnl_eur / heroBB) / (o.hands/100)) * 10) / 10
+      hero_bb100_vs: (o.hands > 0 && villainBB > 0) ? Math.round(((o.hero_pnl_eur / villainBB) / (o.hands/100)) * 10) / 10 : 0
     };
   }
 
